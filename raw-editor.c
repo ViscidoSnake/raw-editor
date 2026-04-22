@@ -47,39 +47,40 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
+char editorReadKey() {
+  int nread;
+  char c;
+  while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
+    if (nread == -1 && errno != EAGAIN) die("read");
+    printf("dd\r\n"); // per test, fa capire effettivamente che la read legge ogni 100 ms cosa viene scritto nello standard input, in altre parole il while effettivamente cicla ma a velocità ridotta (un ciclo ogni 100 ms)
+  }
+  return c;
+}
+
+/*** input ***/
+
+void editorProcessKeypress() {
+  char c = editorReadKey();
+  switch (c) {
+    // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
+    case CTRL_KEY('q'):
+      exit(0);
+      break;
+    
+    // per test, stampa subito quanto digitato
+    default:
+      printf("%c\r\n",c);
+  }
+}
+
 /*** init ***/
 
 int main(){
   enableRawMode();
 
-  int n_timeout = 0;
-  int n_writing = 0;
-
   while (1) {
-    // valore di default di c è il terminatore di stringa che corrisponde al byte 0 ed è un carattere non printabile
-    char c = '\0';
-
-    long int n = read(STDIN_FILENO, &c, 1);
-
-    if(n==0) 
-      n_timeout++; 
-    if(n==1)
-      n_writing++;
-    if(n==-1)
-      // in pratica in questo caso la read può assumere 3 valori diversi: 0 1 e -1, quest'ultimo segnala un errore e quindi il programma va bloccato
-      die("read");
-    
-    if (iscntrl(c)) {
-      printf("%d\r\n", c);
-    } else {
-      printf("%d ('%c')\r\n", c, c);
-    }
-    // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
-    if (c == CTRL_KEY('q')) {
-      printf("tempo totale di digitazione: %f s\r\n", ((float)(n_writing)*10)/1000);
-      printf("tempo totale timeout: %f s\r\n", ((float)(n_timeout)*10)/1000);
-      break;
-    }
+    editorProcessKeypress();
   }
+
   return 0;
 }
