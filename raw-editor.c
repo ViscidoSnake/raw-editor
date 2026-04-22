@@ -50,9 +50,9 @@ void enableRawMode() {
 char editorReadKey() {
   int nread;
   char c;
+  // molta attenzione, si resta nel ciclo while e qundi nella funzione fin tanto che la read non legge un byte dalla standard input, appena ne viene letto uno oppure si verifica errore la funzione fa return  
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
-    printf("dd\r\n"); // per test, fa capire effettivamente che la read legge ogni 100 ms cosa viene scritto nello standard input, in altre parole il while effettivamente cicla ma a velocità ridotta (un ciclo ogni 100 ms)
   }
   return c;
 }
@@ -61,16 +61,22 @@ char editorReadKey() {
 
 void editorProcessKeypress() {
   char c = editorReadKey();
+
   switch (c) {
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
     case CTRL_KEY('q'):
       exit(0);
       break;
-    
-    // per test, stampa subito quanto digitato
-    default:
-      printf("%c\r\n",c);
   }
+}
+
+/*** output ***/
+
+// in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
+void editorRefreshScreen() {
+  write(STDOUT_FILENO, "\x1b[2J", 4); // scrive sulla standard input sequenza escape che fa clear di tutto il terminale e riporta il cursore in basso a sinistra del terminale (diciamo in basso a sinistra della finestra che esegue il terminale)
+  write(STDOUT_FILENO, "\x1b[H", 3); // ancora una sequenza di escape, fatta questa volta da 3 byte, il comando H riposiziona il cursore considerando il termianle come una matrice di caratteri, le coordinate di riposizionamento sono espresse nell'argomento, come si vede qui l'argomento è vuoto quindi si usa il default che è 1;1 (colonna 1 riga 1, la numerazione parte da 1 non da 0)
+
 }
 
 /*** init ***/
@@ -78,7 +84,9 @@ void editorProcessKeypress() {
 int main(){
   enableRawMode();
 
+  // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
+    editorRefreshScreen(); 
     editorProcessKeypress();
   }
 
