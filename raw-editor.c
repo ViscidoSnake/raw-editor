@@ -7,6 +7,9 @@
 #include <stdio.h>
 #include <errno.h>
 
+/*** defines ***/
+#define CTRL_KEY(k) ((k) & 0x1f)
+
 /*** data ***/
 
 struct termios orig_termios;
@@ -71,7 +74,8 @@ int main(){
     } else {
       printf("%d ('%c')\r\n", c, c);
     }
-    if (c == 'q') {
+    // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
+    if (c == CTRL_KEY('q')) {
       printf("tempo totale di digitazione: %f s\r\n", ((float)(n_writing)*10)/1000);
       printf("tempo totale timeout: %f s\r\n", ((float)(n_timeout)*10)/1000);
       break;
