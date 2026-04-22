@@ -6,13 +6,19 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
+#include <sys/ioctl.h>
 
 /*** defines ***/
 #define CTRL_KEY(k) ((k) & 0x1f)
 
 /*** data ***/
 
-struct termios orig_termios;
+struct editorConfig {
+  int screenrows;
+  int screencols;
+  struct termios orig_termios;
+};
+struct editorConfig E;
 
 /*** terminal ***/
 
@@ -27,14 +33,14 @@ void die(const char *s) {
 }
 
 void disableRawMode() {
-  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios) == -1)
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &E.orig_termios) == -1)
     die("tcsetattr");
 }
 
 void enableRawMode() {
-  if (tcgetattr(STDIN_FILENO, &orig_termios) == -1) die("tcgetattr");  
+  if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");  
   
-  struct termios raw = orig_termios;
+  struct termios raw = E.orig_termios;
   // ISIG disabilita i segnali SIGINT e SIGTSTP inviati da Ctrl-C e Ctrl-Z, si evitano in pratica freez dell'output e arresto forzato del programma
   raw.c_lflag &= ~(ECHO | ICANON | ISIG | IEXTEN);
   // IXON bit per disabilitare i seganli emessi da Ctrl-S e Ctrl-Q che praticamente fermano o riprendono il flusso dati in arrivo verso il terminale, anche questi scomodi in questo particolare caso. ICRNL disabilita carriage return e line feed, in pratica questo permette di associare al byte 13 la cobinazione Ctrl-M e anche Invio, prima erano associati al byte 10
@@ -58,6 +64,35 @@ char editorReadKey() {
   return c;
 }
 
+int getCursorPosition(int *rows, int *cols) {
+  char buf[32];
+  unsigned int i = 0;
+  if (write(STDOUT_FILENO, "\x1b[6n", 4) != 4) return -1;
+  while (i < sizeof(buf) - 1) {
+    if (read(STDIN_FILENO, &buf[i], 1) != 1) break;
+    if (buf[i] == 'R') break;
+    i++;
+  }
+  buf[i] = '\0';
+  if (buf[0] != '\x1b' || buf[1] != '[') return -1;
+  if (sscanf(&buf[2], "%d;%d", rows, cols) != 2) return -1;
+  return 0;
+}
+
+int getWindowSize(int *rows, int *cols) {
+  struct winsize ws;
+  if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == -1 || ws.ws_col == 0) {
+    if (write(STDOUT_FILENO, "\x1b[999C\x1b[999B", 12) != 12) return -1;
+    return getCursorPosition(rows, cols);
+  } else {
+    *cols = ws.ws_col;
+    *rows = ws.ws_row;
+    return 0;
+  }
+}
+
+
+
 /*** input ***/
 
 void editorProcessKeypress() {
@@ -76,14 +111,28 @@ void editorProcessKeypress() {
 
 /*** output ***/
 
+void editorDrawRows() {
+  int y;
+  for (y = 0; y < E.screenrows; y++) {
+    write(STDOUT_FILENO, "~\r\n", 3);
+  }
+}
+
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
   write(STDOUT_FILENO, "\x1b[2J", 4); // scrive sulla standard input sequenza escape che fa clear di tutto il terminale e riporta il cursore in basso a sinistra del terminale (diciamo in basso a sinistra della finestra che esegue il terminale)
   write(STDOUT_FILENO, "\x1b[H", 3); // ancora una sequenza di escape, fatta questa volta da 3 byte, il comando H riposiziona il cursore considerando il termianle come una matrice di caratteri, le coordinate di riposizionamento sono espresse nell'argomento, come si vede qui l'argomento è vuoto quindi si usa il default che è 1;1 (colonna 1 riga 1, la numerazione parte da 1 non da 0)
+  
+  editorDrawRows();
 
+  write(STDOUT_FILENO, "\x1b[H", 3);
 }
 
 /*** init ***/
+
+void initEditor() {
+  if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+}
 
 int main(){
 
@@ -91,6 +140,8 @@ int main(){
   atexit(disableRawMode);
   
   enableRawMode();
+
+  initEditor();
 
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
