@@ -6,10 +6,13 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <errno.h>
+#include <string.h>
 #include <sys/ioctl.h>
 
 /*** defines ***/
+
 #define CTRL_KEY(k) ((k) & 0x1f)
+#define RAW_EDITOR_VERSION "0.0.1"
 
 /*** data ***/
 
@@ -91,7 +94,26 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+/*** append buffer ***/
+// si tratta di una struttura dati che praticamente è una lista (non proprio), in C serve implementarla usando puntatori e chiamate per allocazione dinamica della memoria, la sintassi usata per la scrittura è abbastanza avanzata, devo ripredere un po questa parte. Nel progetto questa struttura dati serve per scrivere con una sola write un set di caratteri quindi volendo un elenco di stringhe 
 
+struct abuf {
+  char *b;
+  int len;
+};
+#define ABUF_INIT {NULL, 0}
+
+void abAppend(struct abuf *ab, const char *s, int len) {
+  char *new = realloc(ab->b, ab->len + len);
+  if (new == NULL) return;
+  memcpy(&new[ab->len], s, len);
+  ab->b = new;
+  ab->len += len;
+}
+
+void abFree(struct abuf *ab) {
+  free(ab->b);
+}
 
 /*** input ***/
 
@@ -111,21 +133,49 @@ void editorProcessKeypress() {
 
 /*** output ***/
 
-void editorDrawRows() {
+void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    write(STDOUT_FILENO, "~\r\n", 3);
+    if (y == E.screenrows / 3) {
+      //----
+      // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
+      char welcome[80];
+      int welcomelen = snprintf(welcome, sizeof(welcome),
+        "raw-editor -- version %s", RAW_EDITOR_VERSION);
+      if (welcomelen > E.screencols) welcomelen = E.screencols;
+      // per centrare testo
+      int padding = (E.screencols - welcomelen) / 2;
+      if (padding) {
+        abAppend(ab, "~", 1);
+        padding--;
+      }
+      while (padding--) abAppend(ab, " ", 1);
+      
+      abAppend(ab, welcome, welcomelen);
+      //----
+    } else {
+      abAppend(ab, "~", 1);
+    }
+    abAppend(ab, "\x1b[K", 3);
+    if (y < E.screenrows - 1) {
+      abAppend(ab, "\r\n", 2);
+    }
   }
 }
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
-  write(STDOUT_FILENO, "\x1b[2J", 4); // scrive sulla standard input sequenza escape che fa clear di tutto il terminale e riporta il cursore in basso a sinistra del terminale (diciamo in basso a sinistra della finestra che esegue il terminale)
-  write(STDOUT_FILENO, "\x1b[H", 3); // ancora una sequenza di escape, fatta questa volta da 3 byte, il comando H riposiziona il cursore considerando il termianle come una matrice di caratteri, le coordinate di riposizionamento sono espresse nell'argomento, come si vede qui l'argomento è vuoto quindi si usa il default che è 1;1 (colonna 1 riga 1, la numerazione parte da 1 non da 0)
-  
-  editorDrawRows();
+  struct abuf ab = ABUF_INIT;
+  abAppend(&ab, "\x1b[?25l", 6);
+  abAppend(&ab, "\x1b[H", 3);
 
-  write(STDOUT_FILENO, "\x1b[H", 3);
+  editorDrawRows(&ab);
+
+  abAppend(&ab, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[?25l", 6);
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+  abFree(&ab);
 }
 
 /*** init ***/
