@@ -17,6 +17,7 @@
 /*** data ***/
 
 struct editorConfig {
+  int cx, cy;
   int screenrows;
   int screencols;
   struct termios orig_termios;
@@ -128,6 +129,29 @@ void editorProcessKeypress() {
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
       break;
+        case 'w':
+    case 's':
+    case 'a':
+    case 'd':
+      editorMoveCursor(c);
+      break;
+  }
+}
+
+void editorMoveCursor(char key) {
+  switch (key) {
+    case 'a':
+      E.cx--;
+      break;
+    case 'd':
+      E.cx++;
+      break;
+    case 'w':
+      E.cy--;
+      break;
+    case 's':
+      E.cy++;
+      break;
   }
 }
 
@@ -156,7 +180,7 @@ void editorDrawRows(struct abuf *ab) {
     } else {
       abAppend(ab, "~", 1);
     }
-    abAppend(ab, "\x1b[K", 3);
+    // abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
       abAppend(ab, "\r\n", 2);
     }
@@ -166,21 +190,32 @@ void editorDrawRows(struct abuf *ab) {
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
   struct abuf ab = ABUF_INIT;
-  abAppend(&ab, "\x1b[?25l", 6);
-  abAppend(&ab, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  abAppend(&ab, "\x1b[2J", 4); // cancella tutto il testo scritto nel terminale
+  abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
 
   editorDrawRows(&ab);
 
-  abAppend(&ab, "\x1b[H", 3);
-  abAppend(&ab, "\x1b[?25l", 6);
+  // ----
+  // riposiziona il cursore in alto a destra dello schermo 
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  abAppend(&ab, buf, strlen(buf));
+  // ----
+
+  // abAppend(&ab, "\x1b[H", 3);
+  abAppend(&ab, "\x1b[?25h", 6); // rende nuovamente visibile il cursore
 
   write(STDOUT_FILENO, ab.b, ab.len);
+  
   abFree(&ab);
 }
 
 /*** init ***/
 
 void initEditor() {
+  E.cx = 0;
+  E.cy = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
