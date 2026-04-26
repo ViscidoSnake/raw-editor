@@ -14,10 +14,10 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define RAW_EDITOR_VERSION "0.0.1"
 enum editorKey {
-  ARROW_LEFT = 'a',
-  ARROW_RIGHT = 'd',
-  ARROW_UP = 'w',
-  ARROW_DOWN = 's'
+  ARROW_LEFT = 1000,
+  ARROW_RIGHT = 1001,
+  ARROW_UP = 1002,
+  ARROW_DOWN = 1003
 };
 
 /*** data ***/
@@ -64,7 +64,7 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
-char editorReadKey() {
+int editorReadKey() {
   int nread;
   char c;
   // molta attenzione, si resta nel ciclo while e qundi nella funzione fin tanto che la read non legge un byte dalla standard input, appena ne viene letto uno oppure si verifica errore la funzione fa return  
@@ -147,7 +147,7 @@ void abFree(struct abuf *ab) {
 /*** input ***/
 
 void editorProcessKeypress() {
-  char c = editorReadKey();
+  int c = editorReadKey();
 
   switch (c) {
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
@@ -167,7 +167,7 @@ void editorProcessKeypress() {
   }
 }
 
-void editorMoveCursor(char key) {
+void editorMoveCursor(int key) {
   switch (key) {
     case ARROW_LEFT:
       E.cx--;
