@@ -14,12 +14,14 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define RAW_EDITOR_VERSION "0.0.1"
 enum editorKey {
-  ARROW_LEFT = 1000,
-  ARROW_RIGHT = 1001,
-  ARROW_UP = 1002,
-  ARROW_DOWN = 1003,
-  PAGE_UP = 1004,
-  PAGE_DOWN = 1005
+  ARROW_LEFT,
+  ARROW_RIGHT,
+  ARROW_UP,
+  ARROW_DOWN,
+  PAGE_UP,
+  PAGE_DOWN,
+  HOME_KEY,
+  END_KEY
 };
 
 /*** data ***/
@@ -66,14 +68,13 @@ void enableRawMode() {
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == -1) die("tcsetattr");
 }
 
+// su laptop HOME_KEY e END_KEY sono f11 e f12 rispettivamente, potrebbero esserci però anche altri pulsanti o combinazioni che non conosco e danno le stesse combinazioni che danno questi pulsanti, per questo sono presenti in vari case
 int editorReadKey() {
   int nread;
   char c;
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
-  
-  
   if (c == '\x1b') {
     char seq[3];
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
@@ -83,8 +84,12 @@ int editorReadKey() {
         if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
         if (seq[2] == '~') {
           switch (seq[1]) {
+            case '1': return HOME_KEY;
+            case '4': return END_KEY;
             case '5': return PAGE_UP;
             case '6': return PAGE_DOWN;
+            case '7': return HOME_KEY;
+            case '8': return END_KEY;
           }
         }
       } else {
@@ -93,7 +98,14 @@ int editorReadKey() {
           case 'B': return ARROW_DOWN;
           case 'C': return ARROW_RIGHT;
           case 'D': return ARROW_LEFT;
+          case 'H': return HOME_KEY;
+          case 'F': return END_KEY;
         }
+      }
+    } else if (seq[0] == 'O') {
+      switch (seq[1]) {
+        case 'H': return HOME_KEY;
+        case 'F': return END_KEY;
       }
     }
     return '\x1b';
@@ -173,6 +185,13 @@ void editorProcessKeypress() {
         while (times--)
           editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
       }
+      break;
+    
+    case HOME_KEY:
+      E.cx = 0;
+      break;
+    case END_KEY:
+      E.cx = E.screencols - 1;
       break;
 
     case ARROW_UP:
