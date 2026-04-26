@@ -13,6 +13,12 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define RAW_EDITOR_VERSION "0.0.1"
+enum editorKey {
+  ARROW_LEFT = 'a',
+  ARROW_RIGHT = 'd',
+  ARROW_UP = 'w',
+  ARROW_DOWN = 's'
+};
 
 /*** data ***/
 
@@ -64,6 +70,28 @@ char editorReadKey() {
   // molta attenzione, si resta nel ciclo while e qundi nella funzione fin tanto che la read non legge un byte dalla standard input, appena ne viene letto uno oppure si verifica errore la funzione fa return  
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
+  
+    // metodo per leggere input che generano l'invio di più byte nello standard input, in particolare vengono letti i pulsanti che inviano come primo byte della sequenza il \x1b ovvero 27, dopo questo si leggono i byte successivi, in particolare 2, per fare ciò si eseguono due read conscutive, i valori letti vengono memorizzati in un piccolo buffer e se non sono presenti due byte allora si verifica return del valore \x1b. Se il valore del primo byte dopo \x1b è '[' (91) allora si processa. Per farla breve questo blocchetto processa i pulsanti della tastiera arrow (su giù destra sinistra) che infatti quando premute inviano 3 byte dove solo l'ultimo cambia e identifica l'effettivo pulsante
+
+    //, questo si verifica tipicamente per pulsanti comme le frecce ma anche tanti altri  
+    if (c == '\x1b') {
+      char seq[3];
+      if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+      if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+      if (seq[0] == '[') {
+        switch (seq[1]) {
+          case 'A': return ARROW_UP;
+          case 'B': return ARROW_DOWN;
+          case 'C': return ARROW_RIGHT;
+          case 'D': return ARROW_LEFT;
+        }
+      }
+      return '\x1b';
+
+    } else {
+      return c;
+    }
+  
   }
   return c;
 }
@@ -129,10 +157,11 @@ void editorProcessKeypress() {
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
       break;
-        case 'w':
-    case 's':
-    case 'a':
-    case 'd':
+    
+    case ARROW_UP:
+    case ARROW_DOWN:
+    case ARROW_LEFT:
+    case ARROW_RIGHT:
       editorMoveCursor(c);
       break;
   }
@@ -140,16 +169,16 @@ void editorProcessKeypress() {
 
 void editorMoveCursor(char key) {
   switch (key) {
-    case 'a':
+    case ARROW_LEFT:
       E.cx--;
       break;
-    case 'd':
+    case ARROW_RIGHT:
       E.cx++;
       break;
-    case 'w':
+    case ARROW_UP:
       E.cy--;
       break;
-    case 's':
+    case ARROW_DOWN:
       E.cy++;
       break;
   }
