@@ -17,7 +17,9 @@ enum editorKey {
   ARROW_LEFT = 1000,
   ARROW_RIGHT = 1001,
   ARROW_UP = 1002,
-  ARROW_DOWN = 1003
+  ARROW_DOWN = 1003,
+  PAGE_UP = 1004,
+  PAGE_DOWN = 1005
 };
 
 /*** data ***/
@@ -67,18 +69,25 @@ void enableRawMode() {
 int editorReadKey() {
   int nread;
   char c;
-  // molta attenzione, si resta nel ciclo while e qundi nella funzione fin tanto che la read non legge un byte dalla standard input, appena ne viene letto uno oppure si verifica errore la funzione fa return  
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
+  }
   
-    // metodo per leggere input che generano l'invio di più byte nello standard input, in particolare vengono letti i pulsanti che inviano come primo byte della sequenza il \x1b ovvero 27, dopo questo si leggono i byte successivi, in particolare 2, per fare ciò si eseguono due read conscutive, i valori letti vengono memorizzati in un piccolo buffer e se non sono presenti due byte allora si verifica return del valore \x1b. Se il valore del primo byte dopo \x1b è '[' (91) allora si processa. Per farla breve questo blocchetto processa i pulsanti della tastiera arrow (su giù destra sinistra) che infatti quando premute inviano 3 byte dove solo l'ultimo cambia e identifica l'effettivo pulsante
-
-    //, questo si verifica tipicamente per pulsanti comme le frecce ma anche tanti altri  
-    if (c == '\x1b') {
-      char seq[3];
-      if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
-      if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
-      if (seq[0] == '[') {
+  
+  if (c == '\x1b') {
+    char seq[3];
+    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+    if (seq[0] == '[') {
+      if (seq[1] >= '0' && seq[1] <= '9') {
+        if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+        if (seq[2] == '~') {
+          switch (seq[1]) {
+            case '5': return PAGE_UP;
+            case '6': return PAGE_DOWN;
+          }
+        }
+      } else {
         switch (seq[1]) {
           case 'A': return ARROW_UP;
           case 'B': return ARROW_DOWN;
@@ -86,14 +95,11 @@ int editorReadKey() {
           case 'D': return ARROW_LEFT;
         }
       }
-      return '\x1b';
-
-    } else {
-      return c;
     }
-  
+    return '\x1b';
+  } else {
+    return c;
   }
-  return c;
 }
 
 int getCursorPosition(int *rows, int *cols) {
@@ -158,11 +164,26 @@ void editorProcessKeypress() {
       exit(0);
       break;
     
+
+    case PAGE_UP:
+    case PAGE_DOWN:
+      {
+        // Interessante, in base che sia premuto pageup o pagedown è previsto un ciclo che esegue times volte arrow up o arrow down ovvero quindi il cursore viene fatto scorrere nella coordinata y di uno in alto o in basso 
+        int times = E.screenrows;
+        while (times--)
+          editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+      }
+      break;
+
     case ARROW_UP:
     case ARROW_DOWN:
     case ARROW_LEFT:
     case ARROW_RIGHT:
       editorMoveCursor(c);
+      break;
+    
+    case 110:
+      printf("%c",c);
       break;
   }
 }
@@ -217,7 +238,7 @@ void editorDrawRows(struct abuf *ab) {
     } else {
       abAppend(ab, "~", 1);
     }
-    // abAppend(ab, "\x1b[K", 3);
+    abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
       abAppend(ab, "\r\n", 2);
     }
@@ -228,13 +249,12 @@ void editorDrawRows(struct abuf *ab) {
 void editorRefreshScreen() {
   struct abuf ab = ABUF_INIT;
   abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
-  abAppend(&ab, "\x1b[2J", 4); // cancella tutto il testo scritto nel terminale
   abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
 
   editorDrawRows(&ab);
 
   // ----
-  // riposiziona il cursore in alto a destra dello schermo 
+  // riposiziona il cursore
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
