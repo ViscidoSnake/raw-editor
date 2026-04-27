@@ -1,14 +1,19 @@
 /*** includes ***/
 
-#include <unistd.h>
-#include <termios.h>
-#include <stdlib.h>
+// questi 3 define servono per far funzionare la getline()
+#define _DEFAULT_SOURCE
+#define _BSD_SOURCE
+#define _GNU_SOURCE
+
 #include <ctype.h>
-#include <stdio.h>
 #include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
+#include <termios.h>
+#include <unistd.h>
 
 /*** defines ***/
 
@@ -61,7 +66,10 @@ void disableRawMode() {
 }
 
 void enableRawMode() {
-  if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");  
+  if (tcgetattr(STDIN_FILENO, &E.orig_termios) == -1) die("tcgetattr");
+
+  // fondamentale per ripristinare le condizioni iniziali del terminale!
+  atexit(disableRawMode);
   
   struct termios raw = E.orig_termios;
   // ISIG disabilita i segnali SIGINT e SIGTSTP inviati da Ctrl-C e Ctrl-Z, si evitano in pratica freez dell'output e arresto forzato del programma
@@ -154,15 +162,25 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** file i/o ***/
 
-// carica con dati erow presente nella struttura E con il nome di row, in questa versione ciò che viene caricato è una stringa statica cioè "Hello, world!" quindi è relativamente facile riportare questa stringa in erow
-void editorOpen() {
-  char *line = "Hello, world!";
-  ssize_t linelen = 13;
-  E.row.size = linelen;
-  E.row.chars = malloc(linelen + 1);
-  memcpy(E.row.chars, line, linelen);
-  E.row.chars[linelen] = '\0';
-  E.numrows = 1;
+// carica con dati erow presente nella struttura E con il nome di row, in questa versione i dati caricati sono la prima riga di un file passato come argomento nel momento in cui viene lanciato l'editor. in particolare la getline legge la prima riga di questo file (tutto ciò che è scritto prima del carattere new line \n compreso) e il while successivo serve per scartare il carattere \n e \r che praticamente non vorranno essere stampati.
+void editorOpen(char *filename) {
+  FILE *fp = fopen(filename, "r");
+  if (!fp) die("fopen");
+  char *line = NULL;
+  size_t linecap = 0;
+  ssize_t linelen;
+  linelen = getline(&line, &linecap, fp);
+  if (linelen != -1) {
+    while (linelen > 0 && (line[linelen - 1] == '\n' || line[linelen - 1] == '\r'))
+      linelen--;
+    E.row.size = linelen;
+    E.row.chars = malloc(linelen + 1);
+    memcpy(E.row.chars, line, linelen);
+    E.row.chars[linelen] = '\0';
+    E.numrows = 1;
+  }
+  free(line); // necessario comunque liberare memoria dopo che la getline la ha allocata per leggere la riga!!
+  fclose(fp);
 }
 
 
@@ -267,7 +285,7 @@ void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
     if(y >= E.numrows) { // entro nell'if fin tanto che ho righe da scrivere nell'editor che praticamente restano collocate in alto
-      if (y == E.screenrows / 3) {
+      if (E.numrows == 0 && y == E.screenrows / 3) { // scrive il messaggio di benvenuto solo se non viene passato nessun file in input  
         //----
         // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
         char welcome[80];
@@ -288,6 +306,7 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
+      // in pratica vengono caricati nel buffer solo i caratteri che poi sono visibili nella schermata dell'editor definita in termini di dimensioni dalla finestra da cui viene lanciato l'editor (non è ancora previsto un meccanismo di scrolling orizzontale)
       int len = E.row.size;
       if (len > E.screencols) len = E.screencols;
       abAppend(ab, E.row.chars, len);
@@ -311,7 +330,7 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf)+1, "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
   // ----
 
@@ -332,15 +351,14 @@ void initEditor() {
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
-int main(){
-
-  // atexit fondamentale per ripristinare lo stato iniziale del terminale, in pratica esegue le funzioni registrate come in uno stack LIFO una volta che il main termina (anche con exit che forza l'interruzione immediata del main)
-  atexit(disableRawMode);
-  
+int main(int argc, char *argv[]) {
   enableRawMode();
-
-  initEditor();  
-  editorOpen();
+  initEditor();
+  
+  // serve per verificare la presenza di un 
+  if (argc >= 2) {
+    editorOpen(argv[1]);
+  }
 
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
