@@ -19,6 +19,7 @@ enum editorKey {
   ARROW_UP,
   ARROW_DOWN,
   PAGE_UP,
+  DEL_KEY,
   PAGE_DOWN,
   HOME_KEY,
   END_KEY
@@ -85,6 +86,7 @@ int editorReadKey() {
         if (seq[2] == '~') {
           switch (seq[1]) {
             case '1': return HOME_KEY;
+            case '3': return DEL_KEY;
             case '4': return END_KEY;
             case '5': return PAGE_UP;
             case '6': return PAGE_DOWN;
@@ -201,6 +203,9 @@ void editorProcessKeypress() {
       exit(0);
       break;
     
+    case DEL_KEY:
+      break;
+
 
     case PAGE_UP:
     case PAGE_DOWN:
@@ -276,7 +281,7 @@ void editorRefreshScreen() {
   // ----
   // riposiziona il cursore
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  snprintf(buf, sizeof(buf)+1, "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
   // ----
 
