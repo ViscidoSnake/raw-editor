@@ -8,6 +8,7 @@
 #include <errno.h>
 #include <string.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 
 /*** defines ***/
 
@@ -26,11 +27,18 @@ enum editorKey {
 };
 
 /*** data ***/
+// usato per tenere in memoria il testo scritto nell'edito
+typedef struct erow {
+  int size;
+  char *chars;
+} erow;
 
 struct editorConfig {
   int cx, cy;
   int screenrows;
   int screencols;
+  int numrows;
+  erow row;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -143,6 +151,21 @@ int getWindowSize(int *rows, int *cols) {
   }
 }
 
+
+/*** file i/o ***/
+
+// carica con dati erow presente nella struttura E con il nome di row, in questa versione ciò che viene caricato è una stringa statica cioè "Hello, world!" quindi è relativamente facile riportare questa stringa in erow
+void editorOpen() {
+  char *line = "Hello, world!";
+  ssize_t linelen = 13;
+  E.row.size = linelen;
+  E.row.chars = malloc(linelen + 1);
+  memcpy(E.row.chars, line, linelen);
+  E.row.chars[linelen] = '\0';
+  E.numrows = 1;
+}
+
+
 /*** append buffer ***/
 // si tratta di una struttura dati che praticamente è una lista (non proprio), in C serve implementarla usando puntatori e chiamate per allocazione dinamica della memoria, la sintassi usata per la scrittura è abbastanza avanzata, devo ripredere un po questa parte. Nel progetto questa struttura dati serve per scrivere con una sola write un set di caratteri quindi volendo un elenco di stringhe 
 
@@ -243,25 +266,31 @@ void editorProcessKeypress() {
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    if (y == E.screenrows / 3) {
-      //----
-      // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
-      char welcome[80];
-      int welcomelen = snprintf(welcome, sizeof(welcome),
-        "raw-editor -- version %s", RAW_EDITOR_VERSION);
-      if (welcomelen > E.screencols) welcomelen = E.screencols;
-      // per centrare testo
-      int padding = (E.screencols - welcomelen) / 2;
-      if (padding) {
+    if(y >= E.numrows) { // entro nell'if fin tanto che ho righe da scrivere nell'editor che praticamente restano collocate in alto
+      if (y == E.screenrows / 3) {
+        //----
+        // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
+        char welcome[80];
+        int welcomelen = snprintf(welcome, sizeof(welcome),
+          "raw-editor -- version %s", RAW_EDITOR_VERSION);
+        if (welcomelen > E.screencols) welcomelen = E.screencols;
+        // per centrare testo
+        int padding = (E.screencols - welcomelen) / 2;
+        if (padding) {
+          abAppend(ab, "~", 1);
+          padding--;
+        }
+        while (padding--) abAppend(ab, " ", 1);
+        
+        abAppend(ab, welcome, welcomelen);
+        //----
+      } else {
         abAppend(ab, "~", 1);
-        padding--;
       }
-      while (padding--) abAppend(ab, " ", 1);
-      
-      abAppend(ab, welcome, welcomelen);
-      //----
     } else {
-      abAppend(ab, "~", 1);
+      int len = E.row.size;
+      if (len > E.screencols) len = E.screencols;
+      abAppend(ab, E.row.chars, len);
     }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
@@ -276,10 +305,11 @@ void editorRefreshScreen() {
   abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
   abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
 
+
   editorDrawRows(&ab);
 
   // ----
-  // riposiziona il cursore
+  // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
   snprintf(buf, sizeof(buf)+1, "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
   abAppend(&ab, buf, strlen(buf));
@@ -298,6 +328,7 @@ void editorRefreshScreen() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.numrows = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 }
 
@@ -308,7 +339,8 @@ int main(){
   
   enableRawMode();
 
-  initEditor();
+  initEditor();  
+  editorOpen();
 
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
