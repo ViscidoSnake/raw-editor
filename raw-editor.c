@@ -39,10 +39,11 @@ typedef struct erow {
 } erow;
 
 struct editorConfig {
-  int cx, cy;
-  int screenrows;
-  int screencols;
-  int numrows;
+  int cx, cy; // posizioni x e y del cursore 
+  int rowoff; // righe di offset, importante per implementazione dello scrolling
+  int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
+  int screencols; // ampiezza della finestra in cui l'editor è eseguito espressa in caratteri
+  int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
   struct termios orig_termios;
 };
@@ -229,12 +230,12 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_UP:
-      if (E.cy != 0) {
+      if (E.cy != 0) { // evita che il cursore sia posizionato in coordinata y negativa
         E.cy--;
       }
       break;
     case ARROW_DOWN:
-      if (E.cy != E.screenrows - 1) {
+      if (E.cy < E.numrows) { // evita che il cursore assuma valori maggiori rispetto a E.numrows ovvero il numero complessivo di righe lette nel file dall'aeditor 
         E.cy++;
       }
       break;
@@ -291,10 +292,23 @@ void editorProcessKeypress() {
 
 /*** output ***/
 
+// funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù 
+void editorScroll() {
+
+  if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
+
+    E.rowoff = E.cy;
+  }
+  if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
+    E.rowoff = E.cy - E.screenrows + 1;
+  }
+}
+
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < E.screenrows; y++) {
-    if(y >= E.numrows) { // entro nell'if fin tanto che ho righe da scrivere nell'editor che praticamente restano collocate in alto
+    int filerow = y + E.rowoff;
+    if (filerow >= E.numrows) {
       if (E.numrows == 0 && y == E.screenrows / 3) { // scrive il messaggio di benvenuto solo se non viene passato nessun file in input  
         //----
         // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
@@ -317,9 +331,9 @@ void editorDrawRows(struct abuf *ab) {
       }
     } else {
       // in pratica vengono caricati nel buffer solo i caratteri che poi sono visibili nella schermata dell'editor definita in termini di dimensioni dalla finestra da cui viene lanciato l'editor (non è ancora previsto un meccanismo di scrolling orizzontale)
-      int len = E.row[y].size;
+      int len = E.row[filerow].size;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, E.row[y].chars, len);
+      abAppend(ab, E.row[filerow].chars, len);
     }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
@@ -330,6 +344,8 @@ void editorDrawRows(struct abuf *ab) {
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
+  editorScroll();
+
   struct abuf ab = ABUF_INIT;
   abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
   abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
@@ -340,7 +356,9 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1, E.cx + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1); 
+  // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1 - E.rowoff, E.cx + 1);
+
   abAppend(&ab, buf, strlen(buf));
   // ----
 
@@ -357,6 +375,7 @@ void editorRefreshScreen() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.rowoff = 0;
   E.numrows = 0;
   E.row = NULL;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
