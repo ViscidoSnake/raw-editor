@@ -41,6 +41,7 @@ typedef struct erow {
 struct editorConfig {
   int cx, cy; // posizioni x e y del cursore 
   int rowoff; // righe di offset, importante per implementazione dello scrolling
+  int coloff; // bordo orizzontale di offset, importante per implementare scrolling orizzontale 
   int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
   int screencols; // ampiezza della finestra in cui l'editor è eseguito espressa in caratteri
   int numrows; // numero di righe nel file aperto dall'editor
@@ -225,9 +226,7 @@ void editorMoveCursor(int key) {
       }
       break;
     case ARROW_RIGHT:
-      if (E.cx != E.screencols - 1) {
         E.cx++;
-      }
       break;
     case ARROW_UP:
       if (E.cy != 0) { // evita che il cursore sia posizionato in coordinata y negativa
@@ -292,7 +291,7 @@ void editorProcessKeypress() {
 
 /*** output ***/
 
-// funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù 
+// funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù. idem per lo scroll orizzontale ma qui la variabile aggiornata è coloff e la variabile considerata è E.cx
 void editorScroll() {
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
@@ -301,6 +300,12 @@ void editorScroll() {
   }
   if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
     E.rowoff = E.cy - E.screenrows + 1;
+  }
+   if (E.cx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
+    E.coloff = E.cx;
+  }
+  if (E.cx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
+    E.coloff = E.cx - E.screencols + 1;
   }
 }
 
@@ -330,10 +335,11 @@ void editorDrawRows(struct abuf *ab) {
         abAppend(ab, "~", 1);
       }
     } else {
-      // in pratica vengono caricati nel buffer solo i caratteri che poi sono visibili nella schermata dell'editor definita in termini di dimensioni dalla finestra da cui viene lanciato l'editor (non è ancora previsto un meccanismo di scrolling orizzontale)
-      int len = E.row[filerow].size;
+      // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
+      int len = E.row[filerow].size - E.coloff;
+      if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, E.row[filerow].chars, len);
+      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
@@ -356,8 +362,7 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, E.cx + 1); 
-  // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", E.cy + 1 - E.rowoff, E.cx + 1);
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
@@ -376,6 +381,7 @@ void initEditor() {
   E.cx = 0;
   E.cy = 0;
   E.rowoff = 0;
+  E.coloff = 0;
   E.numrows = 0;
   E.row = NULL;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
