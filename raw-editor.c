@@ -202,7 +202,6 @@ void editorUpdateRow(erow *row) {
   row->rsize = idx;
 }
 
-
 void editorAppendRow(char *s, size_t len) {
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1)); // rialloca memoria per l'array di erow che si espande di 1 perchè viene letta una nuova riga 
 
@@ -238,7 +237,6 @@ void editorOpen(char *filename) {
   free(line);
   fclose(fp);
 }
-
 
 /*** append buffer ***/
 // si tratta di una struttura dati che praticamente è una lista (non proprio), in C serve implementarla usando puntatori e chiamate per allocazione dinamica della memoria, la sintassi usata per la scrittura è abbastanza avanzata, devo ripredere un po questa parte. Nel progetto questa struttura dati serve per scrivere con una sola write un set di caratteri quindi volendo un elenco di stringhe 
@@ -305,7 +303,6 @@ void editorMoveCursor(int key) {
   // ----
 }
 
-
 void editorProcessKeypress() {
   int c = editorReadKey();
 
@@ -325,6 +322,13 @@ void editorProcessKeypress() {
     case PAGE_UP:
     case PAGE_DOWN:
       {
+        if (c == PAGE_UP) {
+          E.cy = E.rowoff;
+        } else if (c == PAGE_DOWN) {
+          E.cy = E.rowoff + E.screenrows - 1;
+          if (E.cy > E.numrows) E.cy = E.numrows;
+        }
+
         // Interessante, in base che sia premuto pageup o pagedown è previsto un ciclo che esegue times volte arrow up o arrow down ovvero quindi il cursore viene fatto scorrere nella coordinata y di uno in alto o in basso 
         int times = E.screenrows;
         while (times--)
@@ -336,7 +340,8 @@ void editorProcessKeypress() {
       E.cx = 0;
       break;
     case END_KEY:
-      E.cx = E.screencols - 1;
+      if (E.cy < E.numrows)
+        E.cx = E.row[E.cy].size;
       break;
 
     case ARROW_UP:
@@ -351,7 +356,6 @@ void editorProcessKeypress() {
       break;
   }
 }
-
 
 /*** output ***/
 
