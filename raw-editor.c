@@ -19,6 +19,8 @@
 
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define RAW_EDITOR_VERSION "0.0.1"
+#define KILO_TAB_STOP 8
+
 enum editorKey {
   ARROW_LEFT,
   ARROW_RIGHT,
@@ -36,10 +38,13 @@ enum editorKey {
 typedef struct erow {
   int size;
   char *chars;
+  int rsize;
+  char *render; // buffer usato per effettuare il render cioè in pratica quello effettivamente stampato
 } erow;
 
 struct editorConfig {
   int cx, cy; // posizioni x e y del cursore 
+  int rx;
   int rowoff; // righe di offset, importante per implementazione dello scrolling
   int coloff; // bordo orizzontale di offset, importante per implementare scrolling orizzontale 
   int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
@@ -163,6 +168,41 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
+// questa funziona calcola dinamicamente la posizione che deve avere il cursore nell'interfaccia di editor, è fondamentale perchè caratteri come il tab (\t) vengono renderizzati come sequenza di più spazzi!
+int editorRowCxToRx(erow *row, int cx) {
+  int rx = 0;
+  int j;
+  for (j = 0; j < cx; j++) {
+    if (row->chars[j] == '\t')
+      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+    rx++;
+  }
+  return rx;
+}
+
+// questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
+// gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
+void editorUpdateRow(erow *row) {
+  int tabs = 0;
+  int j;
+  for (j = 0; j < row->size; j++)
+    if (row->chars[j] == '\t') tabs++;
+  free(row->render);
+  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+  int idx = 0;
+  for (j = 0; j < row->size; j++) {
+    if (row->chars[j] == '\t') {
+      row->render[idx++] = ' ';
+      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+    } else {
+      row->render[idx++] = row->chars[j];
+    }
+  }
+  row->render[idx] = '\0';
+  row->rsize = idx;
+}
+
+
 void editorAppendRow(char *s, size_t len) {
   E.row = realloc(E.row, sizeof(erow) * (E.numrows + 1)); // rialloca memoria per l'array di erow che si espande di 1 perchè viene letta una nuova riga 
 
@@ -172,6 +212,10 @@ void editorAppendRow(char *s, size_t len) {
   E.row[at].chars = malloc(len + 1); // puntatore ad una zona della memoria dove scriverò i caratteri che costituiscono la riga letta, il +1 è per aggiungere poi il carattere terminatore di stringa
   memcpy(E.row[at].chars, s, len);
   E.row[at].chars[len] = '\0';
+
+  E.row[at].rsize = 0;
+  E.row[at].render = NULL;
+  editorUpdateRow(&E.row[at]);
 
   E.numrows++; // incremento finale essendo stata aggiunta la riga appena processata 
 }
@@ -314,18 +358,22 @@ void editorProcessKeypress() {
 // funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù. idem per lo scroll orizzontale ma qui la variabile aggiornata è coloff e la variabile considerata è E.cx
 void editorScroll() {
 
-  if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
+  E.rx = 0;
+  if (E.cy < E.numrows) {
+    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  }
 
+  if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
     E.rowoff = E.cy;
   }
   if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
     E.rowoff = E.cy - E.screenrows + 1;
   }
-   if (E.cx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
-    E.coloff = E.cx;
+   if (E.rx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
+    E.coloff = E.rx;
   }
-  if (E.cx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
-    E.coloff = E.cx - E.screencols + 1;
+  if (E.rx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
+    E.coloff = E.rx - E.screencols + 1;
   }
 }
 
@@ -356,10 +404,10 @@ void editorDrawRows(struct abuf *ab) {
       }
     } else {
       // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
-      int len = E.row[filerow].size - E.coloff;
+      int len = E.row[filerow].rsize - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+      abAppend(ab, &E.row[filerow].render[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3);
     if (y < E.screenrows - 1) {
@@ -382,7 +430,7 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
@@ -400,6 +448,7 @@ void editorRefreshScreen() {
 void initEditor() {
   E.cx = 0;
   E.cy = 0;
+  E.rx = 0;
   E.rowoff = 0;
   E.coloff = 0;
   E.numrows = 0;
