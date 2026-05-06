@@ -51,6 +51,7 @@ struct editorConfig {
   int screencols; // ampiezza della finestra in cui l'editor è eseguito espressa in caratteri
   int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
+  char *filename;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -224,6 +225,9 @@ void editorAppendRow(char *s, size_t len) {
 
 // carica con dati erow presente nella struttura E con il nome di row, in questa versione i dati caricati sono la prima riga di un file passato come argomento nel momento in cui viene lanciato l'editor. in particolare la getline legge la prima riga di questo file (tutto ciò che è scritto prima del carattere new line \n compreso) e il while successivo serve per scartare il carattere \n e \r che praticamente non vorranno essere stampati.
 void editorOpen(char *filename) {
+  free(E.filename);
+  E.filename = strdup(filename);
+  
   FILE *fp = fopen(filename, "r");
   if (!fp) die("fopen");
   char *line = NULL;
@@ -414,11 +418,31 @@ void editorDrawRows(struct abuf *ab) {
       abAppend(ab, &E.row[filerow].render[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3);
-    if (y < E.screenrows - 1) {
-      abAppend(ab, "\r\n", 2);
-    }
+    abAppend(ab, "\r\n", 2);
   }
 }
+
+void editorDrawStatusBar(struct abuf *ab) {
+  abAppend(ab, "\x1b[7m", 4);
+  char status[80], rstatus[80]; // varibili usate per scrivere nome del file aperto e numero di riga in cui si trova il cursore
+  int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+    E.filename ? E.filename : "[No Name]", E.numrows);
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
+    E.cy + 1, E.numrows);
+  if (len > E.screencols) len = E.screencols;
+  abAppend(ab, status, len);
+  while (len < E.screencols) {
+    if (E.screencols - len == rlen) {
+      abAppend(ab, rstatus, rlen);
+      break;
+    } else {
+      abAppend(ab, " ", 1);
+      len++;
+    }
+  }
+  abAppend(ab, "\x1b[m", 3);
+}
+
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
@@ -430,6 +454,7 @@ void editorRefreshScreen() {
 
 
   editorDrawRows(&ab);
+  editorDrawStatusBar(&ab);
 
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
@@ -457,14 +482,17 @@ void initEditor() {
   E.coloff = 0;
   E.numrows = 0;
   E.row = NULL;
+  E.filename = NULL;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
+
+  E.screenrows -= 1; // tolgo una screenrow perche la riservo per la status bar
 }
 
 int main(int argc, char *argv[]) {
   enableRawMode();
   initEditor();
   
-  // serve per verificare la presenza di un 
+  // serve per verificare la presenza di un argomento dato durante lancio del programma
   if (argc >= 2) {
     editorOpen(argv[1]);
   }
