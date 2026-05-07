@@ -22,7 +22,7 @@
 #define KILO_TAB_STOP 8
 
 enum editorKey {
-  ARROW_LEFT,
+  ARROW_LEFT = 1000,
   ARROW_RIGHT,
   ARROW_UP,
   ARROW_DOWN,
@@ -52,6 +52,7 @@ struct editorConfig {
   int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
   char *filename;
+  int mod;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -319,6 +320,10 @@ void editorProcessKeypress() {
       exit(0);
       break;
     
+    case CTRL_KEY('k'):
+      E.mod = 0;
+      break;
+    
     case DEL_KEY:
       break;
 
@@ -355,8 +360,8 @@ void editorProcessKeypress() {
       editorMoveCursor(c);
       break;
     
-    case 110:
-      printf("%c",c);
+    case 999:
+      // mi trovo nella modalità byte, non faccio nulla qui, tutto accade nella funzione editorByteReader
       break;
   }
 }
@@ -443,6 +448,108 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[m", 3);
 }
 
+// vorrei praticamente avviare questa modalità per leggere in modo molto grezzo le sequenze di byte inviate premendo i tasti sulla tastiera
+// void editorByteReader() {
+//   struct abuf ac = ABUF_INIT;
+//   abAppend(&ac, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+//   abAppend(&ac, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
+//   abAppend(&ac, "CIAO\n\r", 6);
+
+//   abAppend(&ac, "\x1b[13;3H", 7); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
+//   abAppend(&ac, "\x1b[?25h", 6); 
+
+//   write(STDOUT_FILENO, ac.b, ac.len);
+
+//   char c[20];
+//   int nread;
+//   while(1){
+
+//     write(STDOUT_FILENO,"\x1b[13;3H", 7);
+//     write(STDOUT_FILENO,"                    ", 20);
+//     write(STDOUT_FILENO,"\x1b[13;3H", 7);
+
+
+
+//     while ((nread = read(STDIN_FILENO, c, 1)) != 1) {
+//       if (nread == -1 && errno != EAGAIN) die("read");
+//     }
+    
+//     if (c[0] == 'q') break;
+
+//     char r[20];
+//     int i=0;
+//     while(c[i]!=' '){
+//       r[i] = c[i];
+//       i++;
+//     }
+
+//     write(STDOUT_FILENO, r, i);
+
+
+//     while ((nread = read(STDIN_FILENO, c, 1)) != 1) {
+//       if (nread == -1 && errno != EAGAIN) die("read");
+//     }
+
+//   }
+
+
+
+//   E.mod = 1;
+//   abFree(&ac);
+// }
+
+void editorByteReader() {
+  
+  // write(STDOUT_FILENO, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  // write(STDOUT_FILENO, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
+  // write(STDIN_FILENO, "prova", 5);
+
+  // write(STDOUT_FILENO, "\x1b[10;10H", 8);
+  // write(STDOUT_FILENO, "\r\nByte letti: ", 15);
+  // write(STDOUT_FILENO, out, outlen);
+  // write(STDOUT_FILENO, "\x1b[10;11H", 8);
+  // write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera: ", 58);
+  // write(STDOUT_FILENO, "\x1b[?25l", 6); // mostra il cursore nel terminale
+
+  while (1) {
+
+    char buf[32];
+    char out[32];
+    int outlen;
+
+    int nread = read(STDIN_FILENO, buf, sizeof(buf));
+    if (nread == -1 && errno != EAGAIN) die("read");
+
+    if (nread != 0) {
+
+      if (buf[0] == 'q') break;
+
+      write(STDOUT_FILENO, "\x1b[10;10H", 8);
+      write(STDOUT_FILENO, "\r\nByte letti: ", 15);
+      // for (int i = 0; i < nread; i++) {
+      //   outlen = snprintf(out, sizeof(out), "%d-", (unsigned char)buf[i]);
+      //   write(STDOUT_FILENO, out, outlen);
+      // }
+
+      int i=0;
+      while(i!=32){
+        if(i<nread){
+          outlen = snprintf(out, sizeof(out), "%d ", (unsigned char)buf[i]);
+        }else{
+          write(STDOUT_FILENO, " ", 1);
+        }
+        i++;
+      }
+      
+      write(STDOUT_FILENO, out, nread);
+      write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera ", 58);
+
+    }
+  }
+  
+  E.mod = 1;
+}
+
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
@@ -483,6 +590,7 @@ void initEditor() {
   E.numrows = 0;
   E.row = NULL;
   E.filename = NULL;
+  E.mod = 1;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 1; // tolgo una screenrow perche la riservo per la status bar
@@ -499,8 +607,9 @@ int main(int argc, char *argv[]) {
 
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
-    editorRefreshScreen(); 
-    editorProcessKeypress();
+    editorRefreshScreen();
+    if(E.mod) editorProcessKeypress();
+    else editorByteReader();
   }
 
   return 0;
