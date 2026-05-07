@@ -513,40 +513,47 @@ void editorByteReader() {
 
   while (1) {
 
-    char buf[32];
-    char out[32];
-    int outlen;
-
-    int nread = read(STDIN_FILENO, buf, sizeof(buf));
+    char readbuf[32]; // buffer di lettura sulla standard input, lette al max sequenze di 32 byte, ampiamente sufficiente, anzi direi eccessivo
+    int nread = read(STDIN_FILENO, readbuf, sizeof(readbuf)); // leggo oggni 100 ms la standard input e metto il numero di byte letti in nread
     if (nread == -1 && errno != EAGAIN) die("read");
+
+    // printf("%d", nread);
 
     if (nread != 0) {
 
-      if (buf[0] == 'q') break;
+      if ((readbuf[0] == 'q') && (nread == 1)) break; //appena leggo carattere q esco 
 
+      char out[200]; // buffer che è poi quello sul quale vanno scritti i valori decimali dei byte letti e presenti in readbuf
+      for(int i=0; i<200; i++){
+        out[i]=' ';
+      }
+      int nc = 0;
+
+      // posizione da definire attraverso dimensioni della finestra
       write(STDOUT_FILENO, "\x1b[10;10H", 8);
+      write(STDOUT_FILENO, "\x1b[48;2;255;0;0m", 15);
+      
       write(STDOUT_FILENO, "\r\nByte letti: ", 15);
+
       // for (int i = 0; i < nread; i++) {
       //   outlen = snprintf(out, sizeof(out), "%d-", (unsigned char)buf[i]);
       //   write(STDOUT_FILENO, out, outlen);
       // }
 
       int i=0;
-      while(i!=32){
-        if(i<nread){
-          outlen = snprintf(out, sizeof(out), "%d ", (unsigned char)buf[i]);
-        }else{
-          write(STDOUT_FILENO, " ", 1);
-        }
+      while(i<nread){
+        int n = snprintf(&out[nc], sizeof(out), "%d ", (unsigned char)readbuf[i]);
+        nc = nc + n;
         i++;
       }
       
-      write(STDOUT_FILENO, out, nread);
-      write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera ", 58);
+      write(STDOUT_FILENO, out, 200);
+      // write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera ", 58);
 
     }
   }
   
+  write(STDOUT_FILENO, "\x1b[0m", 4);
   E.mod = 1;
 }
 
