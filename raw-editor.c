@@ -500,16 +500,39 @@ void editorDrawStatusBar(struct abuf *ab) {
 
 void editorByteReader() {
   
-  // write(STDOUT_FILENO, "\x1b[?25l", 6); // nasconde il cursore nel terminale
-  // write(STDOUT_FILENO, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
-  // write(STDIN_FILENO, "prova", 5);
+  int w = E.screencols;
+  int h = E.screenrows;
 
-  // write(STDOUT_FILENO, "\x1b[10;10H", 8);
-  // write(STDOUT_FILENO, "\r\nByte letti: ", 15);
-  // write(STDOUT_FILENO, out, outlen);
-  // write(STDOUT_FILENO, "\x1b[10;11H", 8);
-  // write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera: ", 58);
-  // write(STDOUT_FILENO, "\x1b[?25l", 6); // mostra il cursore nel terminale
+  write(STDOUT_FILENO, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  write(STDOUT_FILENO, "\x1b[48;2;255;0;0m", 15); // applica sfondo rosso ai caratteri scritti da questo momento in poi
+
+
+  int mrow = h/5; //dimensione del menu relativa a qunto è grande la finestra editor  
+  int mtposition = (h/2)+(mrow/2);  // posizione del menu al centro della schermata (mtposition contiene la coornita y inferiore)
+  int ychar; //considera praticamente i caratteri che servono per scrivere la coordinata y che sposta il cursore del terminale
+  if(mtposition<=99){ // if abbastanza superfluo, si potrebbe andare direttamente a considerare il caso limite cioè ychar = 4 che praticamente si verifica solo considerando dimesioni della schermata che esegue l'editor assurde (oltre 9999 righe di terminale in un solo scermo...)
+    ychar = 2;
+  }else if((mtposition>=100)&&(mtposition<=999)){
+    ychar = 3;
+  }else if((mtposition>=1000)&&(mtposition<=9999)){
+    ychar = 4;
+  }
+  
+  char* menu = malloc((mrow*(5+ychar+w))); // allocazione della memoria tolale che serve per disegnare il menu, ragionamento righe x colonne dove le righe sono lunghe w caratteri più però anche i byte che servono per inserire le sequenze di controllo come quella che riposiziona il cursore, questa sarebbe la sequnza \x1b[%d;1H dove %d sarebbe il decimale che possiede ychar caratteri nella stringa, dunque per ogni riga che si vuole disegnare, i primi 5 + ychar riportano la sequenza escape che posiziona il cursore e i restnti vogliamo w caratteri stampabili
+
+  // disegna il riquadro menu
+  for(int i=0; i<mrow; i++){
+    snprintf(&menu[(i*(5+ychar+w))], 5+ychar+1, "\x1b[%d;1H", mtposition); // MOLTO IMPORTANTE, praticamente snprintf scrive sempre il carattere terminatore di stringa cioè \0, per questo devo scrivere 5+ychar+1, ometendo il +1 la funzione troncherebbe la sequenza escape di un byte per aggiungere \0. il fatto che scrivo un carattere in più, non previsto nella malloc, è subito compensato dopo dal fatto che la sequenza di spazzi inizia esattamente in corrispondenza di dove si trova il carattere \0 dunque in questo modo non si verifica errore di segmentazione! 
+    mtposition--;
+    memset(&menu[(i*(5+ychar+w))+5+ychar], ' ', w);
+  }
+
+  // scrive due righe per far capire a cosa serve questa modalità
+
+
+  // write(STDOUT_FILENO, mpos, 7);
+  write(STDOUT_FILENO, menu, mrow*(5+ychar+w));
+  
 
   while (1) {
 
@@ -523,37 +546,33 @@ void editorByteReader() {
 
       if ((readbuf[0] == 'q') && (nread == 1)) break; //appena leggo carattere q esco 
 
-      char out[200]; // buffer che è poi quello sul quale vanno scritti i valori decimali dei byte letti e presenti in readbuf
-      for(int i=0; i<200; i++){
-        out[i]=' ';
-      }
-      int nc = 0;
-
       // posizione da definire attraverso dimensioni della finestra
       write(STDOUT_FILENO, "\x1b[10;10H", 8);
-      write(STDOUT_FILENO, "\x1b[48;2;255;0;0m", 15);
+      write(STDOUT_FILENO, "\r\nByte letti: ", 14);
       
-      write(STDOUT_FILENO, "\r\nByte letti: ", 15);
+      int sw = w - 11;   
+      char *outbuf = malloc(sw);
+      memset(outbuf, ' ', sw);
+      
 
-      // for (int i = 0; i < nread; i++) {
-      //   outlen = snprintf(out, sizeof(out), "%d-", (unsigned char)buf[i]);
-      //   write(STDOUT_FILENO, out, outlen);
-      // }
-
+      int nc = 0;
       int i=0;
       while(i<nread){
-        int n = snprintf(&out[nc], sizeof(out), "%d ", (unsigned char)readbuf[i]);
+        int n = snprintf(&outbuf[nc], sizeof(outbuf), "%d ", (char)readbuf[i]);
         nc = nc + n;
         i++;
       }
       
-      write(STDOUT_FILENO, out, 200);
+      write(STDOUT_FILENO, outbuf, sw);
+      free(outbuf);
       // write(STDOUT_FILENO, "\r\nIn attesa che venga premuto un tasto della tastiera ", 58);
 
     }
   }
   
+  free(menu);
   write(STDOUT_FILENO, "\x1b[0m", 4);
+  write(STDOUT_FILENO, "\x1b[?25h", 6);
   E.mod = 1;
 }
 
