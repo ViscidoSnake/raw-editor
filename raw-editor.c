@@ -503,35 +503,101 @@ void editorByteReader() {
   int w = E.screencols;
   int h = E.screenrows;
 
-  write(STDOUT_FILENO, "\x1b[?25l", 6); // nasconde il cursore nel terminale
-  write(STDOUT_FILENO, "\x1b[48;2;255;0;0m", 15); // applica sfondo rosso ai caratteri scritti da questo momento in poi
+  int menurow  = 7;
+  int toprowp = (h/2)-(menurow/2);
+  int bottomrowp = (h/2)+(menurow/2);
 
 
-  int mrow = h/5; //dimensione del menu relativa a qunto è grande la finestra editor  
-  int mtposition = (h/2)+(mrow/2);  // posizione del menu al centro della schermata (mtposition contiene la coornita y inferiore)
-  int ychar; //considera praticamente i caratteri che servono per scrivere la coordinata y che sposta il cursore del terminale
-  if(mtposition<=99){ // if abbastanza superfluo, si potrebbe andare direttamente a considerare il caso limite cioè ychar = 4 che praticamente si verifica solo considerando dimesioni della schermata che esegue l'editor assurde (oltre 9999 righe di terminale in un solo scermo...)
-    ychar = 2;
-  }else if((mtposition>=100)&&(mtposition<=999)){
-    ychar = 3;
-  }else if((mtposition>=1000)&&(mtposition<=9999)){
-    ychar = 4;
+  struct abuf menu = ABUF_INIT;
+
+  abAppend(&menu, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  abAppend(&menu, "\x1b[48;2;255;0;0m", 15); // applica sfondo rosso ai caratteri scritti da questo momento in poi
+
+  // disegno interstazione del menu dove scrivo come si chiama la modalità attiva, una riga di spazio e una breve descrizione di cosa fa questa modalità
+  
+  int rightspaces = 0;
+  char cp[30];
+  int cplen = 0;
+  for(int i=toprowp; i<=bottomrowp; i++){
+    
+    cplen = sprintf(cp, "\x1b[%d;1H", i);
+    abAppend(&menu, cp, cplen);
+
+    if(i == toprowp){ // prima riga del menu
+      char title[30];
+      int titlelen = sprintf(title, "Byte mode");
+      // printf("%d\n",titlelen);
+      rightspaces = w - (w/2 - titlelen/2 + titlelen);
+      int c = w/2 - titlelen/2;
+      while(c){
+        abAppend(&menu, " ", 1);
+        c--;
+      }
+      abAppend(&menu, title, titlelen);
+    }
+    if(i == toprowp - 1){ // seconda riga del menu
+
+    }
+    
+    // switch(i){
+    //   case 0:
+    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
+    //     abAppend(&menu, cp, cplen - 1);
+    //     padding = w/2 + 9;
+    //     int cpadding = w/2 - 9;
+    //     while(cpadding){
+    //       abAppend(&menu, " ", 1);
+    //       cpadding--;
+    //     }
+    //     abAppend(&menu, "Byte mode", 9);
+    //   break;
+      
+    //   case 1:
+    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
+    //     abAppend(&menu, cp, cplen - 1);
+    //     char desc[100];
+    //     int desclen = sprintf(desc, "Visualizza i byte scriti nella standard input quando vengono premuti i tasti della tastiera");
+    //     padding = desclen - 1;
+    //     abAppend(&menu, desc, desclen - 1);
+    //   break;
+
+    //   case 2:
+    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
+    //     abAppend(&menu, cp, cplen - 1);
+    //     padding = 0; 
+    //   break;
+    
+    // }
+    
+
+
+    while(rightspaces){
+      abAppend(&menu, " ", 1);
+      rightspaces--;
+    }
+
+
   }
   
-  char* menu = malloc((mrow*(5+ychar+w))); // allocazione della memoria tolale che serve per disegnare il menu, ragionamento righe x colonne dove le righe sono lunghe w caratteri più però anche i byte che servono per inserire le sequenze di controllo come quella che riposiziona il cursore, questa sarebbe la sequnza \x1b[%d;1H dove %d sarebbe il decimale che possiede ychar caratteri nella stringa, dunque per ogni riga che si vuole disegnare, i primi 5 + ychar riportano la sequenza escape che posiziona il cursore e i restnti vogliamo w caratteri stampabili
-
-  // disegna il riquadro menu
-  for(int i=0; i<mrow; i++){
-    snprintf(&menu[(i*(5+ychar+w))], 5+ychar+1, "\x1b[%d;1H", mtposition); // MOLTO IMPORTANTE, praticamente snprintf scrive sempre il carattere terminatore di stringa cioè \0, per questo devo scrivere 5+ychar+1, ometendo il +1 la funzione troncherebbe la sequenza escape di un byte per aggiungere \0. il fatto che scrivo un carattere in più, non previsto nella malloc, è subito compensato dopo dal fatto che la sequenza di spazzi inizia esattamente in corrispondenza di dove si trova il carattere \0 dunque in questo modo non si verifica errore di segmentazione! 
-    mtposition--;
-    memset(&menu[(i*(5+ychar+w))+5+ychar], ' ', w);
-  }
-
-  // scrive due righe per far capire a cosa serve questa modalità
+  write(STDOUT_FILENO, menu.b, menu.len);
 
 
-  // write(STDOUT_FILENO, mpos, 7);
-  write(STDOUT_FILENO, menu, mrow*(5+ychar+w));
+  
+
+  
+
+  // // disegna il riquadro menu
+  // for(int i=0; i<mrow; i++){
+  //   snprintf(&menu[(i*(5+ychar+w))], 5+ychar+1, "\x1b[%d;1H", mtposition); // MOLTO IMPORTANTE, praticamente snprintf scrive sempre il carattere terminatore di stringa cioè \0, per questo devo scrivere 5+ychar+1, ometendo il +1 la funzione troncherebbe la sequenza escape di un byte per aggiungere \0. il fatto che scrivo un carattere in più, non previsto nella malloc, è subito compensato dopo dal fatto che la sequenza di spazzi inizia esattamente in corrispondenza di dove si trova il carattere \0 dunque in questo modo non si verifica errore di segmentazione! 
+  //   mtposition--;
+  //   memset(&menu[(i*(5+ychar+w))+5+ychar], ' ', w);
+  // }
+
+  // // scrive due righe per far capire a cosa serve questa modalità
+
+
+  // // write(STDOUT_FILENO, mpos, 7);
+  // write(STDOUT_FILENO, menu, mrow*(5+ychar+w));
   
 
   while (1) {
@@ -570,10 +636,30 @@ void editorByteReader() {
     }
   }
   
-  free(menu);
+  
+  abFree(&menu);
   write(STDOUT_FILENO, "\x1b[0m", 4);
   write(STDOUT_FILENO, "\x1b[?25h", 6);
   E.mod = 1;
+
+  // abAppend(ab, "\x1b[7m", 4);
+  // char status[80], rstatus[80]; // varibili usate per scrivere nome del file aperto e numero di riga in cui si trova il cursore
+  // int len = snprintf(status, sizeof(status), "%.20s - %d lines",
+  //   E.filename ? E.filename : "[No Name]", E.numrows);
+  // int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
+  //   E.cy + 1, E.numrows);
+  // if (len > E.screencols) len = E.screencols;
+  // abAppend(ab, status, len);
+  // while (len < E.screencols) {
+  //   if (E.screencols - len == rlen) {
+  //     abAppend(ab, rstatus, rlen);
+  //     break;
+  //   } else {
+  //     abAppend(ab, " ", 1);
+  //     len++;
+  //   }
+  // }
+  // abAppend(ab, "\x1b[m", 3);
 }
 
 
