@@ -503,10 +503,9 @@ void editorByteReader() {
   int w = E.screencols;
   int h = E.screenrows;
 
-  int menurow  = 7;
+  int menurow  = 4;
   int toprowp = (h/2)-(menurow/2);
   int bottomrowp = (h/2)+(menurow/2);
-
 
   struct abuf menu = ABUF_INIT;
 
@@ -518,6 +517,7 @@ void editorByteReader() {
   int rightspaces = 0;
   char cp[30];
   int cplen = 0;
+  int actionrowlen;
   for(int i=toprowp; i<=bottomrowp; i++){
     
     cplen = sprintf(cp, "\x1b[%d;1H", i);
@@ -535,42 +535,26 @@ void editorByteReader() {
       }
       abAppend(&menu, title, titlelen);
     }
-    if(i == toprowp - 1){ // seconda riga del menu
-
+    if(i == toprowp + 1){ // seconda riga del menu
+      char description[100];
+      int descriptionlen = sprintf(description, "Visualizza i byte scritti nella standard input quando vengono premuti i tasti della tastiera");
+      rightspaces = w - descriptionlen;
+      abAppend(&menu, description, descriptionlen);
+    }
+    if(i == toprowp + 2){ // terza riga del menu
+      char actionrow[100];
+      int actionrowle = sprintf(actionrow, "Byte: ");
+      rightspaces = w - actionrowle;
+      actionrowlen = actionrowle;
+      abAppend(&menu, actionrow, actionrowle);
+    }
+    if(i == toprowp + 3){ // quarta riga del menu
+      char help[100];
+      int helplen = sprintf(help, "Scrivere sulla standard input il byte 113 (carattere 'q') per uscire.");
+      rightspaces = w - helplen;
+      abAppend(&menu, help, helplen);
     }
     
-    // switch(i){
-    //   case 0:
-    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
-    //     abAppend(&menu, cp, cplen - 1);
-    //     padding = w/2 + 9;
-    //     int cpadding = w/2 - 9;
-    //     while(cpadding){
-    //       abAppend(&menu, " ", 1);
-    //       cpadding--;
-    //     }
-    //     abAppend(&menu, "Byte mode", 9);
-    //   break;
-      
-    //   case 1:
-    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
-    //     abAppend(&menu, cp, cplen - 1);
-    //     char desc[100];
-    //     int desclen = sprintf(desc, "Visualizza i byte scriti nella standard input quando vengono premuti i tasti della tastiera");
-    //     padding = desclen - 1;
-    //     abAppend(&menu, desc, desclen - 1);
-    //   break;
-
-    //   case 2:
-    //     cplen = sprintf(cp, "\x1b[%d;1H", i);
-    //     abAppend(&menu, cp, cplen - 1);
-    //     padding = 0; 
-    //   break;
-    
-    // }
-    
-
-
     while(rightspaces){
       abAppend(&menu, " ", 1);
       rightspaces--;
@@ -581,25 +565,8 @@ void editorByteReader() {
   
   write(STDOUT_FILENO, menu.b, menu.len);
 
-
-  
-
-  
-
-  // // disegna il riquadro menu
-  // for(int i=0; i<mrow; i++){
-  //   snprintf(&menu[(i*(5+ychar+w))], 5+ychar+1, "\x1b[%d;1H", mtposition); // MOLTO IMPORTANTE, praticamente snprintf scrive sempre il carattere terminatore di stringa cioè \0, per questo devo scrivere 5+ychar+1, ometendo il +1 la funzione troncherebbe la sequenza escape di un byte per aggiungere \0. il fatto che scrivo un carattere in più, non previsto nella malloc, è subito compensato dopo dal fatto che la sequenza di spazzi inizia esattamente in corrispondenza di dove si trova il carattere \0 dunque in questo modo non si verifica errore di segmentazione! 
-  //   mtposition--;
-  //   memset(&menu[(i*(5+ychar+w))+5+ychar], ' ', w);
-  // }
-
-  // // scrive due righe per far capire a cosa serve questa modalità
-
-
-  // // write(STDOUT_FILENO, mpos, 7);
-  // write(STDOUT_FILENO, menu, mrow*(5+ychar+w));
-  
-
+  int xreadrow = w - actionrowlen;
+  int yreadrow = h/2;
   while (1) {
 
     char readbuf[32]; // buffer di lettura sulla standard input, lette al max sequenze di 32 byte, ampiamente sufficiente, anzi direi eccessivo
@@ -635,7 +602,6 @@ void editorByteReader() {
 
     }
   }
-  
   
   abFree(&menu);
   write(STDOUT_FILENO, "\x1b[0m", 4);
