@@ -547,22 +547,22 @@ void editorByteReader() {
       abAppend(&menu, "Visualizza i byte scritti nella standard input quando vengono premuti i tasti della tastiera", 92);
     }
     if(i == toprowp + 2){ // terza riga del menu
-      // 6 sono i byte che servono per scrivere la stringa "Byte: "
-      rightspaces = w - 6;
-      xpstdinp = 6 + 1;
+      // 35 sono i byte che servono per scrivere la stringa "Byte: "
+      rightspaces = w - 35;
+      xpstdinp = 35 + 1;
       ypstdinp = i;
       lenxypstdinp = sprintf(xypstdinp,"\x1b[%d;%dH",ypstdinp,xpstdinp);
 
-      abAppend(&menu, "Byte: ", 6);
+      abAppend(&menu, "Byte scritti sulla standard input: ", 35);
     }
     if(i == toprowp + 3){ // quarta riga del menu
-      // 48 sono i byte che servono per scrivere Risultato dei....
-      rightspaces = w - 48;
-      xpstdout = 48 + 1;
+      // 50 sono i byte che servono per scrivere Risultato dei....
+      rightspaces = w - 50;
+      xpstdout = 50 + 1;
       ypstdout = i;
       lenxypstdout = sprintf(xypstdout,"\x1b[%d;%dH",ypstdout,xpstdout);
 
-      abAppend(&menu, "Risultato dei byte scritti sulla standard input:", 48);
+      abAppend(&menu, "Risultato dei byte scritti sulla standard output: ", 50);
     }
     if(i == toprowp + 4){ // quinta riga del menu
       // 69 sono i byte che servono per scrivere la stringa help
@@ -584,12 +584,6 @@ void editorByteReader() {
   abFree(&menu); //posso liberare già adesso la memoria perchè no lo userò più, infatti una volta che è stato scritto nella standard output non è più previsto di ridisegnarlo
 
 
-  // praticamente solo una riga del menu è dinamica cioè deve essere ridisegnata ogni volta che errivano byte nella standard input per fare questo praticamente trovo le coordinate precise a cui spostare il cursore e a quel punto si disegneranno i nuovi byte letti più i vari caratteri spazio, 
-
-
-  // char posactionrow[10];
-  // int lenposactionrow = sprintf(posactionrow,"\x1b[%d;%dH",yrowactionrow,xposactionrow);
-  // int lenactionrow = w - 6; //praticamente sarebbero il numero di caratteri spazio da scrivere nella riga in cui ogni volta vengono mostrati i byte letti
   while (1) {
     char readbuf[32]; // buffer di lettura sulla standard input, lette al max sequenze di 32 byte, ampiamente sufficiente, anzi direi eccessivo
     int nread = read(STDIN_FILENO, readbuf, sizeof(readbuf)); // leggo oggni 100 ms la standard input e metto il numero di byte letti in nread
@@ -601,24 +595,35 @@ void editorByteReader() {
 
       if ((readbuf[0] == 'q') && (nread == 1)) break; //appena leggo carattere q esco 
 
-      //---gestione lettura e output dei byte scritti sulla standard input---
-      char *outbuf = malloc(w - xpstdinp + 1);
-      memset(outbuf, ' ', w - xpstdinp + 1); // metodo rapido per scrivere su tutta la memoria allocata il carattere spazio
+      //---gestione lettura dei byte sulla standard input---
+      char *outrawstdinp = malloc(w - xpstdinp + 1);
+      memset(outrawstdinp, ' ', w - xpstdinp + 1); // metodo rapido per scrivere su tutta la memoria allocata il carattere spazio
+      char *outrawstdout = malloc(w - xpstdout + 1);
+      memset(outrawstdout, ' ', w - xpstdout + 1); // metodo rapido per scrivere su tutta la memoria allocata il carattere spazio
       
-      int nc = 0; //indice per spostarsi dentro outbuf, serve perchè non è noto a priori quanti byte saranno scritti nella stringa di output! tipo il numero 12 occuoerà 2 byte ma 123 3 byte
+
+      int nc = 0; //indice per spostarsi dentro outrawstdinp, serve perchè non è noto a priori quanti byte saranno scritti nella stringa di output! tipo il numero 12 occuoerà 2 byte ma 123 3 byte
       int i=0;
       while(i<nread){
-        int n = sprintf(&outbuf[nc], "%d ", (unsigned char)readbuf[i]);
+        int n = sprintf(&outrawstdinp[nc], "%d ", (unsigned char)readbuf[i]);
         nc = nc + n;
         i++;
       }
       
-      write(STDOUT_FILENO, xypstdinp, lenxypstdinp); // riposiziono ogni volta il cursore all'inizio della stringa "Byte: "
-      write(STDOUT_FILENO, outbuf, w - xpstdinp + 1);
-      free(outbuf);
+      // esiste ora un problema: potrebbero essere digitate sequenze ASCII escape ovvero che iniziano con il byte 27 (ad esempio è comune che le tastiere stampino tali sequenze per tasti come le frecce) oppure anche sequenze di byte non stampabili (praticamente i caratteri che vanno da 0 a 31 e il byte 127), le due tipologie di sequenze causano problemi se vengono stampate direttamente perchè vengono interpretate dal terminale che potrebbe spostare il cursore, cambiare stati interni di esso ecc, per questo conviene non stamparle ma sostituire i byte con una stringa di avviso. il carattere spazio, 32, non è molto visibile però viene stampato normalmente (cioè viene gestito como un byte comune)
+      if(((char unsigned)readbuf[0] <= 31) || ((char unsigned)readbuf[0] == 127)) {
+        memcpy(outrawstdout, "non stampabile!", 15);
+      }else{
+        memcpy(outrawstdout, readbuf, nread); // readbuf non contiene sequenze escape o caratteri non printabili, procedo a ricopiarlo semplicemente
+      }
+      
+      write(STDOUT_FILENO, xypstdinp, lenxypstdinp); // riposiziono ogni volta il cursore all'inizio della stringa "Byte... "
+      write(STDOUT_FILENO, outrawstdinp, w - xpstdinp + 1);
+      free(outrawstdinp);
 
-
-      //---gestione scrittura dei byte scritti sulla standard output---
+      write(STDOUT_FILENO, xypstdout, lenxypstdout);  // riposiziono ogni volta il cursore all'inizio della stringa "Risultato... "
+      write(STDOUT_FILENO, outrawstdout, w - xpstdout + 1);
+      free(outrawstdout);
 
 
     }
