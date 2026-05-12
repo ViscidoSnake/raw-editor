@@ -448,55 +448,8 @@ void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[m", 3);
 }
 
-// vorrei praticamente avviare questa modalità per leggere in modo molto grezzo le sequenze di byte inviate premendo i tasti sulla tastiera
-// void editorByteReader() {
-//   struct abuf ac = ABUF_INIT;
-//   abAppend(&ac, "\x1b[?25l", 6); // nasconde il cursore nel terminale
-//   abAppend(&ac, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
-//   abAppend(&ac, "CIAO\n\r", 6);
-
-//   abAppend(&ac, "\x1b[13;3H", 7); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
-//   abAppend(&ac, "\x1b[?25h", 6); 
-
-//   write(STDOUT_FILENO, ac.b, ac.len);
-
-//   char c[20];
-//   int nread;
-//   while(1){
-
-//     write(STDOUT_FILENO,"\x1b[13;3H", 7);
-//     write(STDOUT_FILENO,"                    ", 20);
-//     write(STDOUT_FILENO,"\x1b[13;3H", 7);
 
 
-
-//     while ((nread = read(STDIN_FILENO, c, 1)) != 1) {
-//       if (nread == -1 && errno != EAGAIN) die("read");
-//     }
-    
-//     if (c[0] == 'q') break;
-
-//     char r[20];
-//     int i=0;
-//     while(c[i]!=' '){
-//       r[i] = c[i];
-//       i++;
-//     }
-
-//     write(STDOUT_FILENO, r, i);
-
-
-//     while ((nread = read(STDIN_FILENO, c, 1)) != 1) {
-//       if (nread == -1 && errno != EAGAIN) die("read");
-//     }
-
-//   }
-
-
-
-//   E.mod = 1;
-//   abFree(&ac);
-// }
 
 void editorByteReader() {
   
@@ -523,7 +476,7 @@ void editorByteReader() {
   char xypstdout[20];
   int lenxypstdout;
 
-  // disegno di tutto il menu
+  // disegno tutto il menu
   for(int i=toprowp; i<=bottomrowp; i++){
 
     int rightspaces = 0;
@@ -541,28 +494,35 @@ void editorByteReader() {
       }
       abAppend(&menu, "Byte mode", 9);
     }
-    if(i == toprowp + 1){ // seconda riga del menu
-      // 92 sono i byte che servono per scrivere la descrizione del menu      
-      rightspaces = w - 92;
-      abAppend(&menu, "Visualizza i byte scritti nella standard input quando vengono premuti i tasti della tastiera", 92);
-    }
-    if(i == toprowp + 2){ // terza riga del menu
+    if(i == toprowp + 1){ // terza riga del menu
       // 35 sono i byte che servono per scrivere la stringa "Byte: "
       rightspaces = w - 35;
-      xpstdinp = 35 + 1;
       ypstdinp = i;
+      if(rightspaces - 15 < 0) { // allora il controllo serve per capire se la finestra che renderizza è abbasanza grande da mostrare la stringa statica più il risultato dei byte letti dalla standard input, 15 sarebbe una stima larga dei caratteri necessari, un caso limite del tipo xxx xxx xxx xxx. se non ce questo spazio ovvero entro dentro if allora la posizione del cursore sarà sempre posta a 1 quindi il risultato dei byte letti sovrascriverà la stringa statica, decremento rightspaces perchè poi questo viene riusato alla fine per fare il fill della riga con spazi e potrei essere entrato nell'if con rightspaces > 0
+        xpstdinp = 0;
+        rightspaces-=15;
+      }
+      else xpstdinp = 35 + 1;
+      
       lenxypstdinp = sprintf(xypstdinp,"\x1b[%d;%dH",ypstdinp,xpstdinp);
-
       abAppend(&menu, "Byte scritti sulla standard input: ", 35);
     }
-    if(i == toprowp + 3){ // quarta riga del menu
+    if(i == toprowp + 2){ // quarta riga del menu
       // 50 sono i byte che servono per scrivere Risultato dei....
       rightspaces = w - 50;
-      xpstdout = 50 + 1;
       ypstdout = i;
+      if(rightspaces - 2 < 0) {
+        xpstdout = 0;
+        rightspaces-=2;
+      }
+      else xpstdout = 50 + 1;
+      
       lenxypstdout = sprintf(xypstdout,"\x1b[%d;%dH",ypstdout,xpstdout);
-
       abAppend(&menu, "Risultato dei byte scritti sulla standard output: ", 50);
+    }
+    if(i == toprowp + 3){ // quinta riga del menu
+      // 69 sono i byte che servono per scrivere la stringa help
+      rightspaces = w;
     }
     if(i == toprowp + 4){ // quinta riga del menu
       // 69 sono i byte che servono per scrivere la stringa help
@@ -570,7 +530,8 @@ void editorByteReader() {
       abAppend(&menu, "Scrivere sulla standard input il byte 113 (carattere 'q') per uscire.", 69);
     }
     
-    
+    if(rightspaces<0) rightspaces = 0; // si verifica se le stringhe statiche sono più lunghe di w, in questo caso verranno troncate e non serviranno spazzi a destra
+
     // scrive rightspaces caratteri spazio
     while(rightspaces){
       abAppend(&menu, " ", 1);
@@ -614,7 +575,8 @@ void editorByteReader() {
       if(((char unsigned)readbuf[0] <= 31) || ((char unsigned)readbuf[0] == 127)) {
         memcpy(outrawstdout, "non stampabile!", 15);
       }else{
-        memcpy(outrawstdout, readbuf, nread); // readbuf non contiene sequenze escape o caratteri non printabili, procedo a ricopiarlo semplicemente
+        // readbuf non contiene sequenze escape o caratteri non printabili, procedo a ricopiarlo semplicemente. NOTA: i caratteri verrano interpretati dal terminale in base al tipo di codifica adottata dal terminale stesso, comunemente i terminali odierni hanno di dafault la codifica UTF-8 che è capace di interpretare varie sequenze di byte
+        memcpy(outrawstdout, readbuf, nread); 
       }
       
       write(STDOUT_FILENO, xypstdinp, lenxypstdinp); // riposiziono ogni volta il cursore all'inizio della stringa "Byte... "
@@ -625,7 +587,6 @@ void editorByteReader() {
       write(STDOUT_FILENO, outrawstdout, w - xpstdout + 1);
       free(outrawstdout);
 
-
     }
   }
   
@@ -633,6 +594,12 @@ void editorByteReader() {
   write(STDOUT_FILENO, "\x1b[?25h", 6); //cursore nuovamente visibile
   E.mod = 1;
 }
+
+
+
+
+
+
 
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
