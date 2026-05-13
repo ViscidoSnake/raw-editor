@@ -10,9 +10,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <stdarg.h>
 #include <unistd.h>
 
 /*** defines ***/
@@ -52,6 +54,8 @@ struct editorConfig {
   int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
   char *filename;
+  char statusmsg[80];
+  time_t statusmsg_time;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -441,8 +445,16 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
   }
   abAppend(ab, "\x1b[m", 3);
+  abAppend(ab, "\r\n", 2);
 }
 
+void editorDrawMessageBar(struct abuf *ab) {
+  abAppend(ab, "\x1b[K", 3);
+  int msglen = strlen(E.statusmsg);
+  if (msglen > E.screencols) msglen = E.screencols;
+  if (msglen && time(NULL) - E.statusmsg_time < 5)
+    abAppend(ab, E.statusmsg, msglen);
+}
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
@@ -455,6 +467,7 @@ void editorRefreshScreen() {
 
   editorDrawRows(&ab);
   editorDrawStatusBar(&ab);
+  editorDrawMessageBar(&ab);
 
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
@@ -472,6 +485,14 @@ void editorRefreshScreen() {
   abFree(&ab);
 }
 
+void editorSetStatusMessage(const char *fmt, ...) {
+  va_list ap;
+  va_start(ap, fmt);
+  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  va_end(ap);
+  E.statusmsg_time = time(NULL);
+}
+
 /*** init ***/
 
 void initEditor() {
@@ -483,9 +504,11 @@ void initEditor() {
   E.numrows = 0;
   E.row = NULL;
   E.filename = NULL;
+  E.statusmsg[0] = '\0';
+  E.statusmsg_time = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
-  E.screenrows -= 1; // tolgo una screenrow perche la riservo per la status bar
+  E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
 }
 
 int main(int argc, char *argv[]) {
@@ -496,6 +519,8 @@ int main(int argc, char *argv[]) {
   if (argc >= 2) {
     editorOpen(argv[1]);
   }
+
+    editorSetStatusMessage("HELP: Ctrl-Q = quit");
 
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
