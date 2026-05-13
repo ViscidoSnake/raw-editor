@@ -486,11 +486,17 @@ void editorRefreshScreen() {
 }
 
 void editorSetStatusMessage(const char *fmt, ...) {
+  E.statusmsg_time = time(NULL);
+  
+  char* st = ctime(&(E.statusmsg_time)); //restituisce la data in un formato leggibile, attenzione viene sempre messo, prima del terminatore di stringa, il carattere \n (new line)
+  int strl = strlen(st); //ricorda che strlen NON considera nel conto il carattere terminatore!!!
+  sprintf(E.statusmsg, "[%s", st);
+  sprintf(&(E.statusmsg[strl]), "] ");
+  
   va_list ap;
   va_start(ap, fmt);
-  vsnprintf(E.statusmsg, sizeof(E.statusmsg), fmt, ap);
+  vsprintf(&(E.statusmsg[strl+2]), fmt, ap);
   va_end(ap);
-  E.statusmsg_time = time(NULL);
 }
 
 /*** init ***/
