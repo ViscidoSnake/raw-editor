@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <time.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -60,6 +61,9 @@ struct editorConfig {
   struct termios orig_termios;
 };
 struct editorConfig E;
+
+/*** prototypes ***/
+void editorSetStatusMessage(const char *fmt, ...);
 
 /*** terminal ***/
 
@@ -245,7 +249,22 @@ void editorInsertChar(int c) {
 }
 
 /*** file i/o ***/
-
+char *editorRowsToString(int *buflen) {
+  int totlen = 0;
+  int j;
+  for (j = 0; j < E.numrows; j++)
+    totlen += E.row[j].size + 1;
+  *buflen = totlen;
+  char *buf = malloc(totlen);
+  char *p = buf;
+  for (j = 0; j < E.numrows; j++) {
+    memcpy(p, E.row[j].chars, E.row[j].size);
+    p += E.row[j].size;
+    *p = '\n';
+    p++;
+  }
+  return buf;
+}
 // carica con dati erow presente nella struttura E con il nome di row, in questa versione i dati caricati sono la prima riga di un file passato come argomento nel momento in cui viene lanciato l'editor. in particolare la getline legge la prima riga di questo file (tutto ciò che è scritto prima del carattere new line \n compreso) e il while successivo serve per scartare il carattere \n e \r che praticamente non vorranno essere stampati.
 void editorOpen(char *filename) {
   free(E.filename);
@@ -263,6 +282,26 @@ void editorOpen(char *filename) {
   }
   free(line);
   fclose(fp);
+}
+
+void editorSave() {
+  if (E.filename == NULL) return;
+  int len;
+  char *buf = editorRowsToString(&len);
+  int fd = open(E.filename, O_RDWR | O_CREAT, 0644);
+    if (fd != -1) {
+    if (ftruncate(fd, len) != -1) {
+      if (write(fd, buf, len) == len) {
+        close(fd);
+        free(buf);
+        editorSetStatusMessage("%d bytes written to disk", len);
+        return;
+      }
+    }
+    close(fd);
+  }
+  free(buf);
+  editorSetStatusMessage("Can't save! I/O error: %s", strerror(errno));
 }
 
 /*** append buffer ***/
@@ -363,6 +402,10 @@ void editorProcessKeypress() {
           editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
       }
       break;
+
+      case CTRL_KEY('s'):
+        editorSave();
+        break;
     
     case HOME_KEY:
       E.cx = 0;
@@ -557,8 +600,7 @@ int main(int argc, char *argv[]) {
     editorOpen(argv[1]);
   }
 
-    editorSetStatusMessage("HELP: Ctrl-Q = quit");
-
+  editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
     editorRefreshScreen(); 
