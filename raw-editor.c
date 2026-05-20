@@ -24,7 +24,8 @@
 #define KILO_TAB_STOP 8
 
 enum editorKey {
-  ARROW_LEFT,
+  BACKSPACE = 127,
+  ARROW_LEFT = 1000,
   ARROW_RIGHT,
   ARROW_UP,
   ARROW_DOWN,
@@ -224,6 +225,24 @@ void editorAppendRow(char *s, size_t len) {
   E.numrows++; // incremento finale essendo stata aggiunta la riga appena processata 
 }
 
+// notare che la funzione aggiunge un solo byte quindi caratteri multi byte non vengono inseriti
+void editorRowInsertChar(erow *row, int at, int c) {
+  if (at < 0 || at > row->size) at = row->size;
+  row->chars = realloc(row->chars, row->size + 2);
+  memmove(&row->chars[at + 1], &row->chars[at], row->size - at + 1);
+  row->size++;
+  row->chars[at] = c;
+  editorUpdateRow(row);
+}
+
+/*** editor operations ***/
+void editorInsertChar(int c) {
+  if (E.cy == E.numrows) {
+    editorAppendRow("", 0);
+  }
+  editorRowInsertChar(&E.row[E.cy], E.cx, c);
+  E.cx++;
+}
 
 /*** file i/o ***/
 
@@ -315,6 +334,10 @@ void editorProcessKeypress() {
   int c = editorReadKey();
 
   switch (c) {
+    // sarebbe il carattere scritto nel file quando si preme il tasto invio   
+    case '\r':
+      /* TODO */
+      break;
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
     case CTRL_KEY('q'):
       // sequnze di escape per pulire il terminale e riposizionare il cursore in alto a sinistra
@@ -323,9 +346,6 @@ void editorProcessKeypress() {
       exit(0);
       break;
     
-    case DEL_KEY:
-      break;
-
 
     case PAGE_UP:
     case PAGE_DOWN:
@@ -352,6 +372,12 @@ void editorProcessKeypress() {
         E.cx = E.row[E.cy].size;
       break;
 
+    case BACKSPACE:
+    case CTRL_KEY('h'):
+    case DEL_KEY:
+      /* TODO */
+      break;
+
     case ARROW_UP:
     case ARROW_DOWN:
     case ARROW_LEFT:
@@ -359,10 +385,15 @@ void editorProcessKeypress() {
       editorMoveCursor(c);
       break;
     
-    case 110:
-      printf("%c",c);
+    case CTRL_KEY('l'):
+    case '\x1b':
+      break;
+
+    default:
+      editorInsertChar(c);
       break;
   }
+
 }
 
 /*** output ***/
