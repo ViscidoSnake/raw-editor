@@ -60,6 +60,7 @@ struct editorConfig {
   char statusmsg[150];
   int dirty;
   time_t statusmsg_time;
+  int mod;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -471,6 +472,11 @@ void editorProcessKeypress() {
       break;
     
 
+    case CTRL_KEY('k'):
+      E.mod = 0;
+      break;
+
+
     case PAGE_UP:
     case PAGE_DOWN:
       {
@@ -521,6 +527,9 @@ void editorProcessKeypress() {
 
     default:
       editorInsertChar(c);
+
+    case 999:
+      // mi trovo nella modalità byte, non faccio nulla qui, tutto accade nella funzione editorByteReader
       break;
   }
 
@@ -619,6 +628,159 @@ void editorDrawMessageBar(struct abuf *ab) {
     abAppend(ab, E.statusmsg, msglen);
 }
 
+
+
+void editorByteReader() {
+  
+  int w = E.screencols;
+  int h = E.screenrows;
+
+  int menurow  = 5;
+  int toprowp = (h/2)-(menurow/2);
+  int bottomrowp = (h/2)+(menurow/2);
+
+  struct abuf menu = ABUF_INIT;
+
+  abAppend(&menu, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  abAppend(&menu, "\x1b[48;2;255;0;0m", 15); // applica sfondo rosso ai caratteri scritti da questo momento in poi
+
+  // definisco posizioni in cui si dovrà riposizionare il cursore per ridisegnare alcune parti del menu
+  int xpstdinp;
+  int ypstdinp;
+  char xypstdinp[20];
+  int lenxypstdinp;
+
+  int xpstdout;
+  int ypstdout;
+  char xypstdout[20];
+  int lenxypstdout;
+
+  // disegno tutto il menu
+  for(int i=toprowp; i<=bottomrowp; i++){
+
+    int rightspaces = 0;
+    char cp[30];
+    int cplen = sprintf(cp, "\x1b[%d;1H", i);
+    abAppend(&menu, cp, cplen);
+
+    if(i == toprowp){ // prima riga del menu
+      // 9 sono i byte che servono per scrivere la stringa Byte mode
+      rightspaces = w - (w/2 - 9/2 + 9);
+      int c = w/2 - 9/2;
+      while(c){
+        abAppend(&menu, " ", 1);
+        c--;
+      }
+      abAppend(&menu, "Byte mode", 9);
+    }
+    if(i == toprowp + 1){ // terza riga del menu
+      // 35 sono i byte che servono per scrivere la stringa "Byte: "
+      rightspaces = w - 35;
+      ypstdinp = i;
+      if(rightspaces - 15 < 0) { // allora il controllo serve per capire se la finestra che renderizza è abbasanza grande da mostrare la stringa statica più il risultato dei byte letti dalla standard input, 15 sarebbe una stima larga dei caratteri necessari, un caso limite del tipo xxx xxx xxx xxx. se non ce questo spazio ovvero entro dentro if allora la posizione del cursore sarà sempre posta a 1 quindi il risultato dei byte letti sovrascriverà la stringa statica, decremento rightspaces perchè poi questo viene riusato alla fine per fare il fill della riga con spazi e potrei essere entrato nell'if con rightspaces > 0
+        xpstdinp = 0;
+        rightspaces-=15;
+      }
+      else xpstdinp = 35 + 1;
+      
+      lenxypstdinp = sprintf(xypstdinp,"\x1b[%d;%dH",ypstdinp,xpstdinp);
+      abAppend(&menu, "Byte scritti sulla standard input: ", 35);
+    }
+    if(i == toprowp + 2){ // quarta riga del menu
+      // 50 sono i byte che servono per scrivere Risultato dei....
+      rightspaces = w - 50;
+      ypstdout = i;
+      if(rightspaces - 2 < 0) {
+        xpstdout = 0;
+        rightspaces-=2;
+      }
+      else xpstdout = 50 + 1;
+      
+      lenxypstdout = sprintf(xypstdout,"\x1b[%d;%dH",ypstdout,xpstdout);
+      abAppend(&menu, "Risultato dei byte scritti sulla standard output: ", 50);
+    }
+    if(i == toprowp + 3){ // quinta riga del menu
+      // 69 sono i byte che servono per scrivere la stringa help
+      rightspaces = w;
+    }
+    if(i == toprowp + 4){ // quinta riga del menu
+      // 69 sono i byte che servono per scrivere la stringa help
+      rightspaces = w - 69;
+      abAppend(&menu, "Scrivere sulla standard input il byte 113 (carattere 'q') per uscire.", 69);
+    }
+    
+    if(rightspaces<0) rightspaces = 0; // si verifica se le stringhe statiche sono più lunghe di w, in questo caso verranno troncate e non serviranno spazzi a destra
+
+    // scrive rightspaces caratteri spazio
+    while(rightspaces){
+      abAppend(&menu, " ", 1);
+      rightspaces--;
+    }
+
+
+  }
+  
+  write(STDOUT_FILENO, menu.b, menu.len);
+  abFree(&menu); //posso liberare già adesso la memoria perchè no lo userò più, infatti una volta che è stato scritto nella standard output non è più previsto di ridisegnarlo
+
+
+  while (1) {
+    char readbuf[32]; // buffer di lettura sulla standard input, lette al max sequenze di 32 byte, ampiamente sufficiente, anzi direi eccessivo
+    int nread = read(STDIN_FILENO, readbuf, sizeof(readbuf)); // leggo oggni 100 ms la standard input e metto il numero di byte letti in nread
+    if (nread == -1 && errno != EAGAIN) die("read");
+
+    // printf("%d", nread);
+
+    if (nread != 0) {
+
+      if ((readbuf[0] == 'q') && (nread == 1)) break; //appena leggo carattere q esco 
+
+      //---gestione lettura dei byte sulla standard input---
+      char *outrawstdinp = malloc(w - xpstdinp + 1);
+      memset(outrawstdinp, ' ', w - xpstdinp + 1); // metodo rapido per scrivere su tutta la memoria allocata il carattere spazio
+      char *outrawstdout = malloc(w - xpstdout + 1);
+      memset(outrawstdout, ' ', w - xpstdout + 1); // metodo rapido per scrivere su tutta la memoria allocata il carattere spazio
+      
+
+      int nc = 0; //indice per spostarsi dentro outrawstdinp, serve perchè non è noto a priori quanti byte saranno scritti nella stringa di output! tipo il numero 12 occuoerà 2 byte ma 123 3 byte
+      int i=0;
+      while(i<nread){
+        int n = sprintf(&outrawstdinp[nc], "%d ", (unsigned char)readbuf[i]);
+        nc = nc + n;
+        i++;
+      }
+      
+      // esiste ora un problema: potrebbero essere digitate sequenze ASCII escape ovvero che iniziano con il byte 27 (ad esempio è comune che le tastiere stampino tali sequenze per tasti come le frecce) oppure anche sequenze di byte non stampabili (praticamente i caratteri che vanno da 0 a 31 e il byte 127), le due tipologie di sequenze causano problemi se vengono stampate direttamente perchè vengono interpretate dal terminale che potrebbe spostare il cursore, cambiare stati interni di esso ecc, per questo conviene non stamparle ma sostituire i byte con una stringa di avviso. il carattere spazio, 32, non è molto visibile però viene stampato normalmente (cioè viene gestito como un byte comune)
+      if(((char unsigned)readbuf[0] <= 31) || ((char unsigned)readbuf[0] == 127)) {
+        memcpy(outrawstdout, "non stampabile!", 15);
+      }else{
+        // readbuf non contiene sequenze escape o caratteri non printabili, procedo a ricopiarlo semplicemente. NOTA: i caratteri verrano interpretati dal terminale in base al tipo di codifica adottata dal terminale stesso, comunemente i terminali odierni hanno di dafault la codifica UTF-8 che è capace di interpretare varie sequenze di byte
+        memcpy(outrawstdout, readbuf, nread); 
+      }
+      
+      write(STDOUT_FILENO, xypstdinp, lenxypstdinp); // riposiziono ogni volta il cursore all'inizio della stringa "Byte... "
+      write(STDOUT_FILENO, outrawstdinp, w - xpstdinp + 1);
+      free(outrawstdinp);
+
+      write(STDOUT_FILENO, xypstdout, lenxypstdout);  // riposiziono ogni volta il cursore all'inizio della stringa "Risultato... "
+      write(STDOUT_FILENO, outrawstdout, w - xpstdout + 1);
+      free(outrawstdout);
+
+    }
+  }
+  
+  write(STDOUT_FILENO, "\x1b[0m", 4); //ripristino colori originali terminale
+  write(STDOUT_FILENO, "\x1b[?25h", 6); //cursore nuovamente visibile
+  E.mod = 1;
+}
+
+
+
+
+
+
+
+
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
   editorScroll();
@@ -676,6 +838,7 @@ void initEditor() {
   E.filename = NULL;
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
+  E.mod = 1;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
@@ -693,8 +856,9 @@ int main(int argc, char *argv[]) {
   editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
-    editorRefreshScreen(); 
-    editorProcessKeypress();
+    editorRefreshScreen();
+    if(E.mod) editorProcessKeypress();
+    else editorByteReader();
   }
 
   return 0;
