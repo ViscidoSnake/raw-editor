@@ -23,6 +23,7 @@
 #define CTRL_KEY(k) ((k) & 0x1f)
 #define RAW_EDITOR_VERSION "0.0.1"
 #define KILO_TAB_STOP 8
+#define RAW_EDITOR_QUIT_TIMES 2
 
 enum editorKey {
   BACKSPACE = 127,
@@ -56,7 +57,8 @@ struct editorConfig {
   int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
   char *filename;
-  char statusmsg[100];
+  char statusmsg[150];
+  int dirty;
   time_t statusmsg_time;
   struct termios orig_termios;
 };
@@ -235,6 +237,7 @@ void editorAppendRow(char *s, size_t len) {
   editorUpdateRow(&E.row[at]);
 
   E.numrows++; // incremento finale essendo stata aggiunta la riga appena processata 
+  E.dirty++;
 }
 
 // notare che la funzione aggiunge un solo byte quindi caratteri multi byte non vengono inseriti
@@ -245,6 +248,7 @@ void editorRowInsertChar(erow *row, int at, int c) {
   row->size++;
   row->chars[at] = c;
   editorUpdateRow(row);
+  E.dirty++;
 }
 
 /*** editor operations ***/
@@ -290,6 +294,7 @@ void editorOpen(char *filename) {
   }
   free(line);
   fclose(fp);
+  E.dirty = 0;
 }
 
 void editorSave() {
@@ -303,6 +308,7 @@ void editorSave() {
         close(fd);
         free(buf);
         editorSetStatusMessage("%d bytes written to disk", len);
+        E.dirty = 0;
         return;
       }
     }
@@ -378,12 +384,14 @@ void editorMoveCursor(int key) {
 }
 
 void editorProcessKeypress() {
+  static int quit_times = RAW_EDITOR_QUIT_TIMES; // variabile statica, fondamentale che lo sia altrimenti sarebbe impossibile tenere in memoria il numero di volte in cui è stato premuto Ctrl + q
+  
   int c = editorReadKey();
 
   switch (c) {
 
     case 128:
-      editorSetStatusMessage("Il carattere digitato non è ASCII code quindi non può essere inserito!");
+      editorSetStatusMessage("WARNING!!! Il carattere digitato non è ASCII code quindi non può essere inserito!");
       break;
     
     case '\r':
@@ -392,6 +400,13 @@ void editorProcessKeypress() {
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
     case CTRL_KEY('q'):
       // sequnze di escape per pulire il terminale e riposizionare il cursore in alto a sinistra
+      if (E.dirty && quit_times > 0) {
+        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+        "Press Ctrl-Q %d more times to quit.", quit_times);
+        quit_times--;
+        return;
+      }
+      
       write(STDOUT_FILENO, "\x1b[2J", 4);
       write(STDOUT_FILENO, "\x1b[H", 3);
       exit(0);
@@ -449,6 +464,7 @@ void editorProcessKeypress() {
       break;
   }
 
+  quit_times = RAW_EDITOR_QUIT_TIMES;
 }
 
 /*** output ***/
@@ -515,8 +531,9 @@ void editorDrawRows(struct abuf *ab) {
 void editorDrawStatusBar(struct abuf *ab) {
   abAppend(ab, "\x1b[7m", 4);
   char status[80], rstatus[80]; // varibili usate per scrivere nome del file aperto e numero di riga in cui si trova il cursore
-  int len = snprintf(status, sizeof(status), "%.20s - %d lines",
-    E.filename ? E.filename : "[No Name]", E.numrows);
+    int len = snprintf(status, sizeof(status), "%.20s - %d lines %s",
+  E.filename ? E.filename : "[No Name]", E.numrows,
+    E.dirty ? "(modified)" : "");
   int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
     E.cy + 1, E.numrows);
   if (len > E.screencols) len = E.screencols;
@@ -594,6 +611,7 @@ void initEditor() {
   E.rowoff = 0;
   E.coloff = 0;
   E.numrows = 0;
+  E.dirty = 0;
   E.row = NULL;
   E.filename = NULL;
   E.statusmsg[0] = '\0';
