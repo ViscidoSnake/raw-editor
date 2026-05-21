@@ -56,7 +56,7 @@ struct editorConfig {
   int numrows; // numero di righe nel file aperto dall'editor
   erow *row;  // importante, in pratica definiamo un array di oggetti erow dove la lunghezza di questo array sarebbe quella scritta in numrows
   char *filename;
-  char statusmsg[80];
+  char statusmsg[100];
   time_t statusmsg_time;
   struct termios orig_termios;
 };
@@ -109,6 +109,12 @@ int editorReadKey() {
   while ((nread = read(STDIN_FILENO, &c, 1)) != 1) {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
+
+  // controllo fondamentale, in pratica mi assicuro di processare solo caratteri ASCII code escludendo sostanzialmente sutto ciò che è UTF-8, per fare il conrollo faccio AND bitwise del byte letto e mi assicuro sempre che il bit più significativo sia 0 in quanto i caratteri ASCII vanno da 0 (00000000) a 127 (01111111) 
+  if ((c & 0x80) != 0) {
+    return 128;
+  }
+  
   if (c == '\x1b') {
     char seq[3];
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
@@ -145,8 +151,10 @@ int editorReadKey() {
     }
     return '\x1b';
   } else {
+    // printf("  %d  ", c);
     return c;
   }
+
 }
 
 int getCursorPosition(int *rows, int *cols) {
@@ -373,7 +381,11 @@ void editorProcessKeypress() {
   int c = editorReadKey();
 
   switch (c) {
-    // sarebbe il carattere scritto nel file quando si preme il tasto invio   
+
+    case 128:
+      editorSetStatusMessage("Il carattere digitato non è ASCII code quindi non può essere inserito!");
+      break;
+    
     case '\r':
       /* TODO */
       break;
