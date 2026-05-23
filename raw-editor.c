@@ -45,11 +45,14 @@ typedef struct erow {
   char *chars;
   int rsize;
   char *render; // buffer usato per effettuare il render cioè in pratica quello effettivamente stampato
+  int r2size;
+  char *render2;
 } erow;
 
 struct editorConfig {
   int cx, cy; // posizioni x e y del cursore 
   int rx;
+  int r2x;
   int rowoff; // righe di offset, importante per implementazione dello scrolling
   int coloff; // bordo orizzontale di offset, importante per implementare scrolling orizzontale 
   int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
@@ -61,6 +64,7 @@ struct editorConfig {
   int dirty;
   time_t statusmsg_time;
   int mod;
+  int render;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -201,6 +205,18 @@ int editorRowCxToRx(erow *row, int cx) {
   return rx;
 }
 
+//---
+int editorRowRxToR2x(erow *row, int rx) {
+  int r2x = rx;
+  int j;
+  for (j = 0; j < rx; j++) {
+    if ((row->render[j] == '+')&&(row->render2[j] != '+'))
+      r2x--;
+  }
+  return r2x;
+}
+//---
+
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
 void editorUpdateRow(erow *row) {
@@ -221,6 +237,44 @@ void editorUpdateRow(erow *row) {
   }
   row->render[idx] = '\0';
   row->rsize = idx;
+
+
+
+  free(row->render2);
+  row->render2 = malloc(row->rsize + 1);
+  for (j = 0; j < row->rsize; j++)
+    row->render2[j] = row->render[j];
+  row->r2size = row->rsize;
+
+  char* p = strstr(row->render2, "++++");
+  int esc = 0;
+  while(p != NULL){
+    esc++;
+    switch (*(p+4))
+    {
+    case '0':
+      *p = '\x1b';
+      *(p+1) = '['; 
+      *(p+2) = '0'; 
+      *(p+3) = '0'; 
+      *(p+4) = 'm'; 
+      break;
+    case '1':
+      *p = '\x1b';
+      *(p+1) = '['; 
+      *(p+2) = '3'; 
+      *(p+3) = '1'; 
+      *(p+4) = 'm'; 
+      break;   
+  
+
+      default:
+      break;
+    }
+    // printf("%d",esc);
+    p = strstr(p+4, "++++");
+  }
+
 }
 
 void editorInsertRow(int at, char *s, size_t len) {
@@ -233,6 +287,9 @@ void editorInsertRow(int at, char *s, size_t len) {
   E.row[at].chars[len] = '\0';
   E.row[at].rsize = 0;
   E.row[at].render = NULL;
+  // --
+  E.row[at].render2 = NULL;
+  // --
   editorUpdateRow(&E.row[at]);
   E.numrows++;  // incremento finale essendo stata aggiunta la riga appena processata 
   E.dirty++;
@@ -379,13 +436,11 @@ void editorSave() {
 
 /*** append buffer ***/
 // si tratta di una struttura dati che praticamente è una lista (non proprio), in C serve implementarla usando puntatori e chiamate per allocazione dinamica della memoria, la sintassi usata per la scrittura è abbastanza avanzata, devo ripredere un po questa parte. Nel progetto questa struttura dati serve per scrivere con una sola write un set di caratteri quindi volendo un elenco di stringhe 
-
 struct abuf {
   char *b;
   int len;
 };
 #define ABUF_INIT {NULL, 0}
-
 void abAppend(struct abuf *ab, const char *s, int len) {
   char *new = realloc(ab->b, ab->len + len);
   if (new == NULL) return;
@@ -393,7 +448,6 @@ void abAppend(struct abuf *ab, const char *s, int len) {
   ab->b = new;
   ab->len += len;
 }
-
 void abFree(struct abuf *ab) {
   free(ab->b);
 }
@@ -476,6 +530,9 @@ void editorProcessKeypress() {
       E.mod = 0;
       break;
 
+    case CTRL_KEY('r'):
+      E.render = !E.render;
+      break;
 
     case PAGE_UP:
     case PAGE_DOWN:
@@ -511,7 +568,6 @@ void editorProcessKeypress() {
     case DEL_KEY:
       if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
-      /* TODO */
       break;
 
     case ARROW_UP:
@@ -531,6 +587,8 @@ void editorProcessKeypress() {
     case 999:
       // mi trovo nella modalità byte, non faccio nulla qui, tutto accade nella funzione editorByteReader
       break;
+    case 998:
+      break;
   }
 
   quit_times = RAW_EDITOR_QUIT_TIMES;
@@ -544,6 +602,11 @@ void editorScroll() {
   E.rx = 0;
   if (E.cy < E.numrows) {
     E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+    if(E.render == 1){
+      // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
+      E.rx = editorRowRxToR2x(&E.row[E.cy], E.rx);
+
+    }
   }
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
@@ -627,8 +690,6 @@ void editorDrawMessageBar(struct abuf *ab) {
   if (msglen && time(NULL) - E.statusmsg_time < 5)
     abAppend(ab, E.statusmsg, msglen);
 }
-
-
 
 void editorByteReader() {
   
@@ -774,12 +835,26 @@ void editorByteReader() {
   E.mod = 1;
 }
 
+// ---
 
+void editorDrawRenderRows(struct abuf *ab) {
+  int y;
 
+  for (y = 0; y < E.screenrows; y++) {
+    
+    int filerow = y + E.rowoff;
+    if (filerow >= E.numrows) continue;
+    int len = E.row[filerow].r2size - E.coloff;
+    if (len < 0) len = 0;
+    if (len > E.screencols) len = E.screencols;
+    abAppend(ab, &E.row[filerow].render2[E.coloff], len);
+    abAppend(ab, "\x1b[K", 3);
+    abAppend(ab, "\r\n", 2);
+  }
 
+}
 
-
-
+// ---
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
@@ -810,6 +885,37 @@ void editorRefreshScreen() {
   abFree(&ab);
 }
 
+// ---
+void editorRefreshRenderScreen(){
+  editorScroll();
+
+  struct abuf ab = ABUF_INIT;
+  abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
+  abAppend(&ab, "\x1b[92m", 5);
+
+  editorDrawRenderRows(&ab);
+  // editorDrawStatusBar(&ab);
+  // editorDrawMessageBar(&ab);
+
+  // ----
+  // muove il cursore, cioè lo posiziona in relazione agli input dati
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
+
+  abAppend(&ab, buf, strlen(buf));
+  // ----
+
+  abAppend(&ab, "\x1b[0m", 4);
+  abAppend(&ab, "\x1b[?25h", 6); // rende nuovamente visibile il cursore
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+  
+  abFree(&ab);
+
+}
+// ---
+
 void editorSetStatusMessage(const char *fmt, ...) {
   E.statusmsg_time = time(NULL);
   
@@ -839,6 +945,7 @@ void initEditor() {
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.mod = 1;
+  E.render = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
@@ -856,7 +963,8 @@ int main(int argc, char *argv[]) {
   editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
-    editorRefreshScreen();
+    if(!E.render) editorRefreshScreen();
+    else editorRefreshRenderScreen();
     if(E.mod) editorProcessKeypress();
     else editorByteReader();
   }
