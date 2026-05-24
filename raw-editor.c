@@ -195,31 +195,43 @@ int getWindowSize(int *rows, int *cols) {
 
 // questa funziona calcola dinamicamente la posizione che deve avere il cursore nell'interfaccia di editor, è fondamentale perchè caratteri come il tab (\t) vengono renderizzati come sequenza di più spazzi!
 int editorRowCxToRx(erow *row, int cx) {
+  
+  // da rifare
+  
   int rx = 0;
-  int j;
-  for (j = 0; j < cx; j++) {
-    if (row->chars[j] == '\t')
-      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
-    rx++;
-  }
-  return rx;
+  // int j;
+  // for (j = 0; j < cx; j++) {
+  //   if (row->chars[j] == '\t')
+  //     rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+  //   rx++;
+  // }
+  // return rx;
+
+  // versione da integrare
+
+  // int editorRowRxToR2x(erow *row, int rx) {
+  // int r2x = rx;
+  // int j;
+  // for (j = 0; j < rx; j++) {
+  //   if ((row->render[j] == '+')&&(row->render2[j] != '+'))
+  //     r2x--;
+  // }
+  // return r2x;
+
+  return 4;
 }
 
-//---
-int editorRowRxToR2x(erow *row, int rx) {
-  int r2x = rx;
-  int j;
-  for (j = 0; j < rx; j++) {
-    if ((row->render[j] == '+')&&(row->render2[j] != '+'))
-      r2x--;
-  }
-  return r2x;
-}
-//---
+
+
+
+
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
 void editorUpdateRow(erow *row) {
+  
+  // da rifare 
+  
   int tabs = 0;
   int j;
   for (j = 0; j < row->size; j++)
@@ -287,9 +299,6 @@ void editorInsertRow(int at, char *s, size_t len) {
   E.row[at].chars[len] = '\0';
   E.row[at].rsize = 0;
   E.row[at].render = NULL;
-  // --
-  E.row[at].render2 = NULL;
-  // --
   editorUpdateRow(&E.row[at]);
   E.numrows++;  // incremento finale essendo stata aggiunta la riga appena processata 
   E.dirty++;
@@ -507,7 +516,7 @@ void editorProcessKeypress() {
       editorSetStatusMessage("WARNING!!! Il carattere digitato non è ASCII code quindi non può essere inserito!");
       break;
     
-    case '\r':
+    case '\r': // estrema attenzione, ricordati che ottieni questo valore (13 decimale) premendo sulla tastiera la combinazione Ctrl - m !!! (quindi non puoi usarla)
       editorInsertNewline();
       break;
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
@@ -581,14 +590,14 @@ void editorProcessKeypress() {
     case '\x1b':
       break;
 
+      
     default:
+      if (c < 33) { // allora, questo serve per evitare di inserire nell'editor caratteri non printabili. Infatti tutte le combinazioni Ctrl + (lettera) imporrebbero la scrittura di un caarttere non printabile (quindi byte che però non hanno corrispondenza ad un simbolo), tutte le combinazioni tollerate infatti precedono questo if e NON implicano la scrittura dei byte nel file modificato dall'editor.
+        editorSetStatusMessage("WARNING!!! Il carattere digitato non è stampabile!");
+        break; 
+      }
       editorInsertChar(c);
 
-    case 999:
-      // mi trovo nella modalità byte, non faccio nulla qui, tutto accade nella funzione editorByteReader
-      break;
-    case 998:
-      break;
   }
 
   quit_times = RAW_EDITOR_QUIT_TIMES;
@@ -599,15 +608,17 @@ void editorProcessKeypress() {
 // funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù. idem per lo scroll orizzontale ma qui la variabile aggiornata è coloff e la variabile considerata è E.cx
 void editorScroll() {
 
-  E.rx = 0;
-  if (E.cy < E.numrows) {
-    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-    if(E.render == 1){
-      // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
-      E.rx = editorRowRxToR2x(&E.row[E.cy], E.rx);
+  // E.rx = 0;
+  // if (E.cy < E.numrows) {
+  //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  //   if(E.render == 1){
+  //     // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
+  //     E.rx = editorRowRxToR2x(&E.row[E.cy], E.rx);
 
-    }
-  }
+  //   }
+  // }
+
+  E.rx = E.cx;
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
     E.rowoff = E.cy;
@@ -653,7 +664,7 @@ void editorDrawRows(struct abuf *ab) {
       int len = E.row[filerow].rsize - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, &E.row[filerow].render[E.coloff], len);
+      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
@@ -834,8 +845,6 @@ void editorByteReader() {
   write(STDOUT_FILENO, "\x1b[?25h", 6); //cursore nuovamente visibile
   E.mod = 1;
 }
-
-// ---
 
 void editorDrawRenderRows(struct abuf *ab) {
   int y;
