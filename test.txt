@@ -1,3 +1,3 @@
 Il cane da pastore tedesco
-\b;255;100;100testo in rosso\saaaaaaaaaaaaaaaaaaaaaaaa
-ancora testo
+\b;255;100;100testo in rosso\sciao, ora il testo è normale ancora testo, ciao a tutti
+ciao ancora.

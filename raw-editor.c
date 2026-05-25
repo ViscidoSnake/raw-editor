@@ -199,13 +199,43 @@ int editorRowCxToRx(erow *row, int cx) {
   // da rifare
   
   int rx = 0;
-  // int j;
+  int j = 0;
   // for (j = 0; j < cx; j++) {
   //   if (row->chars[j] == '\t')
   //     rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
   //   rx++;
   // }
   // return rx;
+
+  while(j < cx){
+    if (row->chars[j] != '\\') {
+      rx++;
+      j++;
+    } else {
+      switch (row->chars[j+1]) {
+        case 's':
+          rx+=1;
+          j+=2;
+
+          break;
+    
+        case 'f':
+        case 'b':
+          // rx+=8;
+          rx+=3;
+          j+=15;
+          
+        break;
+        
+        default:
+          j++;
+          break;
+      }
+    }
+  }
+
+  return rx;
+
 
   // versione da integrare
 
@@ -218,7 +248,6 @@ int editorRowCxToRx(erow *row, int cx) {
   // }
   // return r2x;
 
-  return 4;
 }
 
 
@@ -251,58 +280,82 @@ void editorUpdateRow(erow *row) {
   // row->rsize = idx;
 
 
-
   int special = 0;
   int term = 0;
-
   int j;
   for (j = 0; j < row->size; j++) {
     if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'f')||(row->chars[j+1] == 'b'))) special++;
     else if ((row->chars[j] == '\\') && (row->chars[j+1] == 's')) term++; 
   }
   free(row->render);
-  row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1 );
-  j=0;
-  int rindx=0;
   
-  while(j < row->size){
-    if (row->chars[j] != '\\') {
-      row->render[rindx] = row->chars[j];
-      rindx++;
-      j++;
-    }
-    else{
-      switch (row->chars[j+1])
-      {
-      case 's':
-        memcpy(&(row->render[rindx]),"\x1b[0m",4);
-        rindx+=5;
-        j+=2;
-        break;
-      
-      case 'f':
-      case 'b':
-        if(row->chars[j+1] == 'f') memcpy(&(row->render[rindx]),"\x1b[38;2;",7);
-        else memcpy(&(row->render[rindx]),"\x1b[48;2;",7);
-        rindx+=8;
-        j+=3;
-        memcpy(&(row->render[rindx]), &(row->chars[j]), 11);
-        rindx+=12;
-        j+=11;
-        row->render[rindx] = 'm';
-        rindx+=1;
-      break;
-      
-      default:
-        break;
-      }
-    }
-    
+  // row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1);
+  row->render = malloc(row->size - special*12 - term*1 + special*18 + term*3 + 1);
+
+
+  int idx = 0;
+  for (j = 0; j < row->size; j++) { 
+    row->render[idx++] = row->chars[j];
   }
+  row->render[idx] = '\0';
+  row->rsize = idx;
+
+
+  // int special = 0;
+  // int term = 0;
+
+  // int j;
+  // for (j = 0; j < row->size; j++) {
+  //   if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'f')||(row->chars[j+1] == 'b'))) special++;
+  //   else if ((row->chars[j] == '\\') && (row->chars[j+1] == 's')) term++; 
+  // }
+  // free(row->render);
   
-  row->render[rindx] = '\0';
-  row->rsize = rindx;
-  // printf("%s\r\n",row->render);
+  // row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1 );
+  // j=0;
+  // int rindx=0;
+  
+  // while(j < row->size){
+  //   if (row->chars[j] != '\\') {
+  //     row->render[rindx] = row->chars[j];
+  //     rindx++;
+  //     j++;
+  //   }
+  //   else{
+  //     j++;
+  //     switch (row->chars[j])
+  //     {
+  //     case 's':
+  //       memcpy(&(row->render[rindx]),"\x1b[0m",4);
+  //       rindx+=4;
+  //       j+=1;
+  //       break;
+      
+  //     case 'f':
+  //     case 'b':
+  //       if(row->chars[j+1] == 'f') memcpy(&(row->render[rindx]),"\x1b[38;2;",7);
+  //       else memcpy(&(row->render[rindx]),"\x1b[48;2;",7);
+  //       rindx+=7;
+  //       j+=2;
+  //       memcpy(&(row->render[rindx]), &(row->chars[j]), 11);
+  //       rindx+=11;
+  //       j+=11;
+  //       row->render[rindx] = 'm';
+  //       rindx+=1;
+  //     break;
+      
+  //     default:
+  //         row->render[rindx] = row->chars[j];
+  //         j++;
+  //         rindx++;
+  //       break;
+  //     }
+  //   }
+    
+  // }
+  
+  // row->render[rindx] = '\0';
+  // row->rsize = rindx;
 
 }
 
@@ -609,7 +662,7 @@ void editorProcessKeypress() {
 
 
     default:
-      if (c < 33) { // allora, questo serve per evitare di inserire nell'editor caratteri non printabili. Infatti tutte le combinazioni Ctrl + (lettera) imporrebbero la scrittura di un caarttere non printabile (quindi byte che però non hanno corrispondenza ad un simbolo), tutte le combinazioni tollerate infatti precedono questo if e NON implicano la scrittura dei byte nel file modificato dall'editor.
+      if (c < 32) { // allora, questo serve per evitare di inserire nell'editor caratteri non printabili. Infatti tutte le combinazioni Ctrl + (lettera) imporrebbero la scrittura di un caarttere non printabile (quindi byte che però non hanno corrispondenza ad un simbolo), tutte le combinazioni tollerate infatti precedono questo if e NON implicano la scrittura dei byte nel file modificato dall'editor.
         editorSetStatusMessage("WARNING!!! Il carattere digitato non è stampabile!");
         break; 
       }
@@ -628,14 +681,16 @@ void editorScroll() {
   // E.rx = 0;
   // if (E.cy < E.numrows) {
   //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-  //   if(E.render == 1){
-  //     // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
-  //     E.rx = editorRowRxToR2x(&E.row[E.cy], E.rx);
+  // if(E.render == 1){
+  //   // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
+  //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
 
-  //   }
+  // } else {
+  //   E.rx = E.cx;
   // }
-
+  // }
   E.rx = E.cx;
+
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
     E.rowoff = E.cy;
@@ -649,6 +704,19 @@ void editorScroll() {
   if (E.rx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
     E.coloff = E.rx - E.screencols + 1;
   }
+
+  // if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
+  //   E.rowoff = E.cy;
+  // }
+  // if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
+  //   E.rowoff = E.cy - E.screenrows + 1;
+  // }
+  //  if (E.cx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
+  //   E.coloff = E.cx;
+  // }
+  // if (E.cx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
+  //   E.coloff = E.cx - E.screencols + 1;
+  // }
 }
 
 void editorDrawRows(struct abuf *ab) {
