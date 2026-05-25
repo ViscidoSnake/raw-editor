@@ -61,6 +61,7 @@ struct editorConfig {
   int dirty;
   time_t statusmsg_time;
   int mod;
+  int render;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -453,7 +454,7 @@ void editorProcessKeypress() {
       editorSetStatusMessage("WARNING!!! Il carattere digitato non è ASCII code quindi non può essere inserito!");
       break;
     
-    case '\r':
+    case '\r': // estrema attenzione, ricordati che ottieni questo valore (13 decimale) premendo sulla tastiera la combinazione Ctrl - m !!! (quindi non puoi usarla)
       editorInsertNewline();
       break;
     // CTRL_KEY è una macro che applica una maschera (operazione AND) bit a bit, la maschera è di 8 bit e sono i seguenti 00011111 (in decimale 31), in questo caso tale maschera viene applicata al carattere q corrispondente al byte 01110001 (113 in decimale), il risultato è il seguente byte 00010001 (17 in decimale) dato come la combinazione di Ctrl-q. In sostanza la chiave è che la macro è ben fatta perchè permette di rimappare tutte le lettere dell'afabeto ma combinate a Ctrl, chiaramente questo è possibile anche al modo in cui è stato costruito ASCII
@@ -476,6 +477,9 @@ void editorProcessKeypress() {
       E.mod = 0;
       break;
 
+    case CTRL_KEY('r'):
+      E.render = !E.render;
+      break;
 
     case PAGE_UP:
     case PAGE_DOWN:
@@ -511,7 +515,6 @@ void editorProcessKeypress() {
     case DEL_KEY:
       if (c == DEL_KEY) editorMoveCursor(ARROW_RIGHT);
       editorDelChar();
-      /* TODO */
       break;
 
     case ARROW_UP:
@@ -525,12 +528,14 @@ void editorProcessKeypress() {
     case '\x1b':
       break;
 
+
     default:
+      if (c < 32) { // allora, questo serve per evitare di inserire nell'editor caratteri non printabili. Infatti tutte le combinazioni Ctrl + (lettera) imporrebbero la scrittura di un caarttere non printabile (quindi byte che però non hanno corrispondenza ad un simbolo), tutte le combinazioni tollerate infatti precedono questo if e NON implicano la scrittura dei byte nel file modificato dall'editor.
+        editorSetStatusMessage("WARNING!!! Il carattere digitato non è stampabile!");
+        break; 
+      }
       editorInsertChar(c);
 
-    case 999:
-      // mi trovo nella modalità byte, non faccio nulla qui, tutto accade nella funzione editorByteReader
-      break;
   }
 
   quit_times = RAW_EDITOR_QUIT_TIMES;
@@ -590,7 +595,7 @@ void editorDrawRows(struct abuf *ab) {
       int len = E.row[filerow].rsize - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
-      abAppend(ab, &E.row[filerow].render[E.coloff], len);
+      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
     }
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
@@ -839,6 +844,7 @@ void initEditor() {
   E.statusmsg[0] = '\0';
   E.statusmsg_time = 0;
   E.mod = 1;
+  E.render = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
