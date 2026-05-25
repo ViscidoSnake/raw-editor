@@ -192,14 +192,46 @@ int getWindowSize(int *rows, int *cols) {
 
 // questa funziona calcola dinamicamente la posizione che deve avere il cursore nell'interfaccia di editor, è fondamentale perchè caratteri come il tab (\t) vengono renderizzati come sequenza di più spazzi!
 int editorRowCxToRx(erow *row, int cx) {
+  
+  // da rifare
+  
   int rx = 0;
-  int j;
+  int j = 0;
   for (j = 0; j < cx; j++) {
     if (row->chars[j] == '\t')
       rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
     rx++;
   }
   return rx;
+
+  // while(j < cx){
+  //   if (row->chars[j] != '\\') {
+  //     rx++;
+  //     j++;
+  //   } else {
+  //     switch (row->chars[j+1]) {
+  //       case 's':
+  //         rx+=1;
+  //         j+=2;
+
+  //         break;
+    
+  //       case 'f':
+  //       case 'b':
+  //         // rx+=8;
+  //         rx+=3;
+  //         j+=15;
+          
+  //       break;
+        
+  //       default:
+  //         j++;
+  //         break;
+  //     }
+  //   }
+  // }
+
+  // return rx;
 }
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
@@ -587,6 +619,17 @@ void editorProcessKeypress() {
 void editorScroll() {
 
   E.rx = 0;
+  // if (E.cy < E.numrows) {
+  //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  //   if(E.render == 1){
+  //     // E.r2x = editorRowRxToR2x(&E.row[E.cy], E.rx);
+  //     E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+
+  //   } else {
+  //     E.rx = E.cx;
+  //   }
+  // }
+
   if (E.cy < E.numrows) {
     E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
   }
@@ -672,8 +715,6 @@ void editorDrawMessageBar(struct abuf *ab) {
   if (msglen && time(NULL) - E.statusmsg_time < 5)
     abAppend(ab, E.statusmsg, msglen);
 }
-
-
 
 void editorByteReader() {
   
@@ -820,10 +861,22 @@ void editorByteReader() {
 }
 
 
+void editorDrawRenderRows(struct abuf *ab) {
+  int y;
 
+  for (y = 0; y < E.screenrows; y++) {
+    
+    int filerow = y + E.rowoff;
+    if (filerow >= E.numrows) continue;
+    int len = E.row[filerow].rsize - E.coloff;
+    if (len < 0) len = 0;
+    if (len > E.screencols) len = E.screencols;
+    abAppend(ab, &E.row[filerow].render[E.coloff], len);
+    abAppend(ab, "\x1b[K", 3);
+    abAppend(ab, "\r\n", 2);
+  }
 
-
-
+}
 
 
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
@@ -869,6 +922,37 @@ void editorSetStatusMessage(const char *fmt, ...) {
   va_end(ap);
 }
 
+
+void editorRefreshRenderScreen(){
+  editorScroll();
+
+  struct abuf ab = ABUF_INIT;
+  abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
+  abAppend(&ab, "\x1b[H", 3); // riposiziona il cursore in alto a sinistra dello schermo (coordinate 1;1)
+  abAppend(&ab, "\x1b[92m", 5);
+
+  editorDrawRenderRows(&ab);
+  // editorDrawStatusBar(&ab);
+  // editorDrawMessageBar(&ab);
+
+  // ----
+  // muove il cursore, cioè lo posiziona in relazione agli input dati
+  char buf[32];
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
+
+  abAppend(&ab, buf, strlen(buf));
+  // ----
+
+  abAppend(&ab, "\x1b[0m", 4);
+  abAppend(&ab, "\x1b[?25h", 6); // rende nuovamente visibile il cursore
+
+  write(STDOUT_FILENO, ab.b, ab.len);
+  
+  abFree(&ab);
+
+}
+
+
 /*** init ***/
 
 void initEditor() {
@@ -902,7 +986,8 @@ int main(int argc, char *argv[]) {
   editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-Q = quit");
   // osserva che questo while "non cicla" come ci si aspetterebbe infatti: dopo la chiamata a editorProcessKeypress questa chiama una sola volta la editorReadKey la quale ha un ciclo while dove l'esecuzione effettiva resta bloccata fin tanto che non viene premuto un pulsante (o meglio, fin tanto che non viene scritto un byte nella standard input) oppure si verifica errore di lettura (per essere precisi il ciclo while in questione è scandito dal ritmo con cui la read fa return che in questo caso è 100 ms), se viene scritto un byte la editorReadKey fa return (finalmente) e il codice riprende da dentro editorProcessKeypress che ad ora ha solo uno switch case, quando termina anche questa funzione si ritorna al main, in particolare dentro il while "infinito" che esegue quanto è scritto dopo la editorProcessKeypress per poi ricominciare dalla editorRefreshScreen.
   while (1) {
-    editorRefreshScreen();
+    if(!E.render) editorRefreshScreen();
+    else editorRefreshRenderScreen();
     if(E.mod) editorProcessKeypress();
     else editorByteReader();
   }
