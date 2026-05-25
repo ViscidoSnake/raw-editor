@@ -1,7 +1,7 @@
 cioa a tutti voi
-Bla bla bla
+Bla \F255;100;100bla bla
 ciao
-mosca
+mosca\S
 asino, mucca
 1
 e1

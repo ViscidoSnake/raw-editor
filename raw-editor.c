@@ -205,23 +205,63 @@ int editorRowCxToRx(erow *row, int cx) {
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
 void editorUpdateRow(erow *row) {
-  int tabs = 0;
+  
+  int special = 0;
+  int term = 0;
+
   int j;
-  for (j = 0; j < row->size; j++)
-    if (row->chars[j] == '\t') tabs++;
-  free(row->render);
-  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
-  int idx = 0;
   for (j = 0; j < row->size; j++) {
-    if (row->chars[j] == '\t') {
-      row->render[idx++] = ' ';
-      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
-    } else {
-      row->render[idx++] = row->chars[j];
-    }
+    if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'F')||(row->chars[j+1] == 'B'))) special++;
+    else if ((row->chars[j] == '\\') && (row->chars[j+1] == 'S')) term++; 
   }
-  row->render[idx] = '\0';
-  row->rsize = idx;
+  free(row->render);
+  
+  row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1 );
+
+  
+  j=0;
+  int rindx=0;
+  while(j < row->size){
+    if (row->chars[j] != '\\') {
+      row->render[rindx] = row->chars[j];
+      rindx++;
+      j++;
+    }
+    else{
+      j++;
+      switch (row->chars[j])
+      {
+      case 'S':
+        memcpy(&(row->render[rindx]),"\x1b[0m",4);
+        rindx+=4;
+        j+=1;
+        break;
+      
+      case 'F':
+      case 'B':
+        if(row->chars[j] == 'F') memcpy(&(row->render[rindx]),"\x1b[38;2;",7);
+        else memcpy(&(row->render[rindx]),"\x1b[48;2;",7);
+        rindx+=7;
+        j+=1;
+        memcpy(&(row->render[rindx]), &(row->chars[j]), 11);
+        rindx+=11;
+        j+=11;
+        row->render[rindx] = 'm';
+        rindx+=1;
+      break;
+      
+      default:
+          row->render[rindx] = row->chars[j];
+          j++;
+          rindx++;
+        break;
+      }
+    }
+    
+  }
+  
+  row->render[rindx] = '\0';
+  row->rsize = rindx;
 }
 
 void editorInsertRow(int at, char *s, size_t len) {
@@ -592,7 +632,7 @@ void editorDrawRows(struct abuf *ab) {
       }
     } else {
       // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
-      int len = E.row[filerow].rsize - E.coloff;
+      int len = E.row[filerow].size - E.coloff;
       if (len < 0) len = 0;
       if (len > E.screencols) len = E.screencols;
       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
