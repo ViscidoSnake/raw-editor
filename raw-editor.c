@@ -232,60 +232,77 @@ void editorUpdateRow(erow *row) {
   
   // da rifare 
   
-  int tabs = 0;
+  // int tabs = 0;
+  // int j;
+  // for (j = 0; j < row->size; j++)
+  //   if (row->chars[j] == '\t') tabs++;
+  // free(row->render);
+  // row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
+  // int idx = 0;
+  // for (j = 0; j < row->size; j++) {
+  //   if (row->chars[j] == '\t') {
+  //     row->render[idx++] = ' ';
+  //     while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
+  //   } else {
+  //     row->render[idx++] = row->chars[j];
+  //   }
+  // }
+  // row->render[idx] = '\0';
+  // row->rsize = idx;
+
+
+
+  int special = 0;
+  int term = 0;
+
   int j;
-  for (j = 0; j < row->size; j++)
-    if (row->chars[j] == '\t') tabs++;
-  free(row->render);
-  row->render = malloc(row->size + tabs*(KILO_TAB_STOP - 1) + 1);
-  int idx = 0;
   for (j = 0; j < row->size; j++) {
-    if (row->chars[j] == '\t') {
-      row->render[idx++] = ' ';
-      while (idx % KILO_TAB_STOP != 0) row->render[idx++] = ' ';
-    } else {
-      row->render[idx++] = row->chars[j];
-    }
+    if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'f')||(row->chars[j+1] == 'b'))) special++;
+    else if ((row->chars[j] == '\\') && (row->chars[j+1] == 's')) term++; 
   }
-  row->render[idx] = '\0';
-  row->rsize = idx;
-
-
-
-  free(row->render2);
-  row->render2 = malloc(row->rsize + 1);
-  for (j = 0; j < row->rsize; j++)
-    row->render2[j] = row->render[j];
-  row->r2size = row->rsize;
-
-  char* p = strstr(row->render2, "++++");
-  int esc = 0;
-  while(p != NULL){
-    esc++;
-    switch (*(p+4))
-    {
-    case '0':
-      *p = '\x1b';
-      *(p+1) = '['; 
-      *(p+2) = '0'; 
-      *(p+3) = '0'; 
-      *(p+4) = 'm'; 
-      break;
-    case '1':
-      *p = '\x1b';
-      *(p+1) = '['; 
-      *(p+2) = '3'; 
-      *(p+3) = '1'; 
-      *(p+4) = 'm'; 
-      break;   
+  free(row->render);
+  row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1 );
+  j=0;
+  int rindx=0;
   
-
-      default:
-      break;
+  while(j < row->size){
+    if (row->chars[j] != '\\') {
+      row->render[rindx] = row->chars[j];
+      rindx++;
+      j++;
     }
-    // printf("%d",esc);
-    p = strstr(p+4, "++++");
+    else{
+      switch (row->chars[j+1])
+      {
+      case 's':
+        memcpy(&(row->render[rindx]),"\x1b[0m",4);
+        rindx+=5;
+        j+=2;
+        break;
+      
+      case 'f':
+      case 'b':
+        if(row->chars[j+1] == 'f') memcpy(&(row->render[rindx]),"\x1b[38;2;",7);
+        else memcpy(&(row->render[rindx]),"\x1b[48;2;",7);
+        rindx+=8;
+        j+=3;
+        memcpy(&(row->render[rindx]), &(row->chars[j]), 11);
+        rindx+=12;
+        j+=11;
+        row->render[rindx] = 'm';
+        rindx+=1;
+      break;
+      
+      default:
+        break;
+      }
+    }
+    
   }
+  
+  row->render[rindx] = '\0';
+  row->rsize = rindx;
+  // printf("%s\r\n",row->render);
 
 }
 
@@ -590,7 +607,7 @@ void editorProcessKeypress() {
     case '\x1b':
       break;
 
-      
+
     default:
       if (c < 33) { // allora, questo serve per evitare di inserire nell'editor caratteri non printabili. Infatti tutte le combinazioni Ctrl + (lettera) imporrebbero la scrittura di un caarttere non printabile (quindi byte che però non hanno corrispondenza ad un simbolo), tutte le combinazioni tollerate infatti precedono questo if e NON implicano la scrittura dei byte nel file modificato dall'editor.
         editorSetStatusMessage("WARNING!!! Il carattere digitato non è stampabile!");
@@ -853,10 +870,10 @@ void editorDrawRenderRows(struct abuf *ab) {
     
     int filerow = y + E.rowoff;
     if (filerow >= E.numrows) continue;
-    int len = E.row[filerow].r2size - E.coloff;
+    int len = E.row[filerow].rsize - E.coloff;
     if (len < 0) len = 0;
     if (len > E.screencols) len = E.screencols;
-    abAppend(ab, &E.row[filerow].render2[E.coloff], len);
+    abAppend(ab, &E.row[filerow].render[E.coloff], len);
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
   }
