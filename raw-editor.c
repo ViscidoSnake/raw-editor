@@ -49,7 +49,7 @@ typedef struct erow {
 
 struct editorConfig {
   int cx, cy; // posizioni x e y del cursore 
-  int rx;
+  int rx, ry;
   int rowoff; // righe di offset, importante per implementazione dello scrolling
   int coloff; // bordo orizzontale di offset, importante per implementare scrolling orizzontale 
   int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
@@ -476,43 +476,83 @@ void editorMoveCursor(int key) {
   // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
   erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
   
-  switch (key) {
-    case ARROW_LEFT:
-      if (E.cx != 0) {
-        E.cx--;
-      } else if (E.cy > 0) { // implementa il fatto che premendo arrow left quando si è sul primo carattere di una riga allora il curore viene posizionato sull'ultimo caarttere della riga precedente 
-        E.cy--;
-        E.cx = E.row[E.cy].size;
-      }
-      break;
-    case ARROW_RIGHT:
-      if (row && E.cx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
-        E.cx++;
-      } else if (row && E.cx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
-        E.cy++;
-        E.cx = 0;
-      }
-      break;
-    case ARROW_UP:
-      if (E.cy != 0) { // evita che il cursore sia posizionato in coordinata y negativa
-        E.cy--;
-      }
-      break;
-    case ARROW_DOWN:
-      if (E.cy < E.numrows) { // evita che il cursore assuma valori maggiori rispetto a E.numrows ovvero il numero complessivo di righe lette nel file dall'aeditor 
-        E.cy++;
-      }
-      break;
+  if(E.render == 1){
+    switch (key) {
+      case ARROW_LEFT:
+        if (E.rx != 0) {
+          E.rx--;
+        }
+        
+        break;
+      case ARROW_RIGHT:
+        // if (row && E.cx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
+        //   E.cx++;
+        // } else if (row && E.cx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
+        //   E.cy++;
+        //   E.cx = 0;
+        // }
+        E.rx++;
+        break;
+      case ARROW_UP:
+        if (E.ry != 0) { // evita che il cursore sia posizionato in coordinata y negativa
+          E.ry--;
+        }
+        break;
+      case ARROW_DOWN:
+        if (E.ry < E.numrows) { // evita che il cursore assuma valori maggiori rispetto a E.numrows ovvero il numero complessivo di righe lette nel file dall'aeditor 
+          E.ry++;
+        }
+        break;
+    }
+
+    // ----
+    // questo blocchetto evita che spostandosi verticalmente comunque il limite dello scroll orizzontale (cursore che al massimo arriva fino all'ultimo carattere della riga) sia sempre rispettato e in particolare se E.cx eccede allora viene riportato al valore massiomo dato da row->size cioè la dimensione in caratteri dell'attuale riga
+    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    int rowlen = row ? row->size : 0;
+    if (E.cx > rowlen) {
+      E.cx = rowlen;
+    }
+    // ----
+
+  } else {
+    switch (key) {
+      case ARROW_LEFT:
+        if (E.cx != 0) {
+          E.cx--;
+        } else if (E.cy > 0) { // implementa il fatto che premendo arrow left quando si è sul primo carattere di una riga allora il curore viene posizionato sull'ultimo caarttere della riga precedente 
+          E.cy--;
+          E.cx = E.row[E.cy].size;
+        }
+        break;
+      case ARROW_RIGHT:
+        if (row && E.cx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
+          E.cx++;
+        } else if (row && E.cx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
+          E.cy++;
+          E.cx = 0;
+        }
+        break;
+      case ARROW_UP:
+        if (E.cy != 0) { // evita che il cursore sia posizionato in coordinata y negativa
+          E.cy--;
+        }
+        break;
+      case ARROW_DOWN:
+        if (E.cy < E.numrows) { // evita che il cursore assuma valori maggiori rispetto a E.numrows ovvero il numero complessivo di righe lette nel file dall'aeditor 
+          E.cy++;
+        }
+        break;
+    }
+    // ----
+    // questo blocchetto evita che spostandosi verticalmente comunque il limite dello scroll orizzontale (cursore che al massimo arriva fino all'ultimo carattere della riga) sia sempre rispettato e in particolare se E.cx eccede allora viene riportato al valore massiomo dato da row->size cioè la dimensione in caratteri dell'attuale riga
+    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    int rowlen = row ? row->size : 0;
+    if (E.cx > rowlen) {
+      E.cx = rowlen;
+    }
   }
 
-  // ----
-  // questo blocchetto evita che spostandosi verticalmente comunque il limite dello scroll orizzontale (cursore che al massimo arriva fino all'ultimo carattere della riga) sia sempre rispettato e in particolare se E.cx eccede allora viene riportato al valore massiomo dato da row->size cioè la dimensione in caratteri dell'attuale riga
-  row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
-  int rowlen = row ? row->size : 0;
-  if (E.cx > rowlen) {
-    E.cx = rowlen;
-  }
-  // ----
+  
 }
 
 void editorProcessKeypress() {
@@ -618,7 +658,7 @@ void editorProcessKeypress() {
 // funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù. idem per lo scroll orizzontale ma qui la variabile aggiornata è coloff e la variabile considerata è E.cx
 void editorScroll() {
 
-  E.rx = 0;
+  // E.rx = 0;
   // if (E.cy < E.numrows) {
   //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
   //   if(E.render == 1){
@@ -630,9 +670,22 @@ void editorScroll() {
   //   }
   // }
 
-  if (E.cy < E.numrows) {
-    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-  }
+  // if (E.cy < E.numrows) {
+  //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  // }
+
+  // if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
+  //   E.rowoff = E.cy;
+  // }
+  // if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
+  //   E.rowoff = E.cy - E.screenrows + 1;
+  // }
+  //  if (E.rx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
+  //   E.coloff = E.rx;
+  // }
+  // if (E.rx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
+  //   E.coloff = E.rx - E.screencols + 1;
+  // }
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
     E.rowoff = E.cy;
@@ -640,12 +693,14 @@ void editorScroll() {
   if (E.cy >= E.rowoff + E.screenrows) {  // implementa praticamente lo scroll verticale ma verso il basso
     E.rowoff = E.cy - E.screenrows + 1;
   }
-   if (E.rx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
-    E.coloff = E.rx;
+   if (E.cx < E.coloff) { // implementa lo scroll orizzontale verso sinistra
+    E.coloff = E.cx;
   }
-  if (E.rx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
-    E.coloff = E.rx - E.screencols + 1;
+  if (E.cx >= E.coloff + E.screencols) { // implementa lo scroll orizzontale a destra, il +1 è perchè viene scrollato un carattere alla volta
+    E.coloff = E.cx - E.screencols + 1;
   }
+
+
 }
 
 void editorDrawRows(struct abuf *ab) {
@@ -860,25 +915,6 @@ void editorByteReader() {
   E.mod = 1;
 }
 
-
-void editorDrawRenderRows(struct abuf *ab) {
-  int y;
-
-  for (y = 0; y < E.screenrows; y++) {
-    
-    int filerow = y + E.rowoff;
-    if (filerow >= E.numrows) continue;
-    int len = E.row[filerow].rsize - E.coloff;
-    if (len < 0) len = 0;
-    if (len > E.screencols) len = E.screencols;
-    abAppend(ab, &E.row[filerow].render[E.coloff], len);
-    abAppend(ab, "\x1b[K", 3);
-    abAppend(ab, "\r\n", 2);
-  }
-
-}
-
-
 // in questa funzione vengono usati caratteri escape supportati dall'emulatore di terminale, le sequenze VT100 sono quelle più comunemente supportate dai "recenti" emulatori, per fare in modo che l'editor sia compatibile con ancora più terminali fino quasi a definirsi indipendente da essi è necessario fare riferimento a terminfo oppure anche alla libreria ncurses. Spunti molto interessanti per modellare l'editor in modo che risulti il più compatibile possibile.
 void editorRefreshScreen() {
   editorScroll();
@@ -895,7 +931,7 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
@@ -923,6 +959,24 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 
+
+void editorDrawRenderRows(struct abuf *ab) {
+  int y;
+
+  for (y = 0; y < E.screenrows; y++) {
+    
+    int filerow = y + E.rowoff;
+    if (filerow >= E.numrows) continue;
+    int len = E.row[filerow].rsize - E.coloff;
+    if (len < 0) len = 0;
+    if (len > E.screencols) len = E.screencols;
+    abAppend(ab, &E.row[filerow].render[E.coloff], len);
+    abAppend(ab, "\x1b[K", 3);
+    abAppend(ab, "\r\n", 2);
+  }
+
+}
+
 void editorRefreshRenderScreen(){
   editorScroll();
 
@@ -938,7 +992,7 @@ void editorRefreshRenderScreen(){
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry) + 1, (E.rx) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
@@ -959,6 +1013,7 @@ void initEditor() {
   E.cx = 0;
   E.cy = 0;
   E.rx = 0;
+  E.ry = 0;
   E.rowoff = 0;
   E.coloff = 0;
   E.numrows = 0;
