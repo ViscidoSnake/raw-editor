@@ -195,14 +195,51 @@ int editorRowCxToRx(erow *row, int cx) {
   
   // da rifare
   
-  int rx = 0;
-  int j = 0;
-  for (j = 0; j < cx; j++) {
-    if (row->chars[j] == '\t')
-      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
-    rx++;
-  }
-  return rx;
+  // int rx = 0;
+  // int j = 0;
+  // for (j = 0; j < cx; j++) {
+  //   if (row->chars[j] == '\t')
+  //     rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
+  //   rx++;
+  // }
+  // return rx;
+
+
+
+  // int rx = 0;
+  // int j = 0;
+  // while(j < cx){
+  //   if (row->chars[j] != '\\') {
+  //     rx++;
+  //     j++;
+  //   }
+  //   else{
+  //     j++;
+  //     switch (row->chars[j])
+  //     {
+  //     case 'S':
+  //       rx+=4 + 1;
+  //       j+=1;
+  //       break;
+      
+  //     case 'F':
+  //     case 'B':
+  //       rx+=19 + 1;
+  //       j+=12;
+
+  //     break;
+      
+  //     default:
+  //         j++;
+  //         rx++;
+  //       break;
+  //     }
+  //   }
+    
+  // }
+  // return rx;
+
+
 
   // while(j < cx){
   //   if (row->chars[j] != '\\') {
@@ -232,7 +269,48 @@ int editorRowCxToRx(erow *row, int cx) {
   // }
 
   // return rx;
+
+
+
+  int rx = 0;
+  int j = 0;
+
+  while (j < cx) {
+
+      if (row->chars[j] != '\\') {
+
+          rx++;
+          j++;
+          continue;
+      }
+
+      if (j + 1 >= row->size) {
+          rx++;
+          j++;
+          continue;
+      }
+
+      switch (row->chars[j + 1]) {
+
+          case 'S':
+              j += 2;
+              break;
+
+          case 'F':
+          case 'B':
+              j += 13;
+              break;
+
+          default:
+              rx++;
+              j++;
+              break;
+      }
+  }
+
+  return rx;
 }
+
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
@@ -618,7 +696,7 @@ void editorProcessKeypress() {
 // funzione che implementa lo scroll verticale, in pratica aggiorna rowoff in funzione dei valori assunti da E.cy che cambiano in base al numero di volte che si premono freccia su o freccia giù. idem per lo scroll orizzontale ma qui la variabile aggiornata è coloff e la variabile considerata è E.cx
 void editorScroll() {
 
-  E.rx = 0;
+  // E.rx = 0;
   // if (E.cy < E.numrows) {
   //   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
   //   if(E.render == 1){
@@ -630,9 +708,8 @@ void editorScroll() {
   //   }
   // }
 
-  if (E.cy < E.numrows) {
-    E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
-  }
+  E.rx = E.cx;
+
 
   if (E.cy < E.rowoff) {     // implementa praticamente lo scroll verticale verso l'alto 
     E.rowoff = E.cy;
@@ -895,7 +972,7 @@ void editorRefreshScreen() {
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.rx - E.coloff) + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.cy - E.rowoff) + 1, (E.cx - E.coloff) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
