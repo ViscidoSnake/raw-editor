@@ -50,6 +50,8 @@ typedef struct erow {
 struct editorConfig {
   int cx, cy; // posizioni x e y del cursore 
   int rx, ry;
+  int rrowoff;
+  int rcoloff;
   int rowoff; // righe di offset, importante per implementazione dello scrolling
   int coloff; // bordo orizzontale di offset, importante per implementare scrolling orizzontale 
   int screenrows; // larghezza della finestra in cui l'editor è eseguito espressa in caratteri
@@ -241,6 +243,7 @@ void editorUpdateRow(erow *row) {
   int special = 0;
   int term = 0;
 
+  // modo molto grezzo per cercare sequeze di caratteri riconosciute
   int j;
   for (j = 0; j < row->size; j++) {
     if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'F')||(row->chars[j+1] == 'B'))) special++;
@@ -248,7 +251,8 @@ void editorUpdateRow(erow *row) {
   }
   free(row->render);
   
-  row->render = malloc(row->size - special*13 - term*2 + special*19 + term*4 + 1 );
+  // da rivedere la dim della memeria allocata, ora è troppa
+  row->render = malloc(row->size - special*15 - term*3 + special*19 + term*4 + 1 );
 
   
   j=0;
@@ -266,7 +270,7 @@ void editorUpdateRow(erow *row) {
       case 'S':
         memcpy(&(row->render[rindx]),"\x1b[0m",4);
         rindx+=4;
-        j+=1;
+        j+=2;
         break;
       
       case 'F':
@@ -280,6 +284,7 @@ void editorUpdateRow(erow *row) {
         j+=11;
         row->render[rindx] = 'm';
         rindx+=1;
+        j+=2;
       break;
       
       default:
@@ -473,25 +478,26 @@ void abFree(struct abuf *ab) {
 
 /*** input ***/
 void editorMoveCursor(int key) {
-  // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
-  erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
   
   if(E.render == 1){
+    // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
+    erow *row = (E.ry >= E.numrows) ? NULL : &E.row[E.ry];
     switch (key) {
       case ARROW_LEFT:
         if (E.rx != 0) {
           E.rx--;
+        } else if (E.ry > 0) { // implementa il fatto che premendo arrow left quando si è sul primo carattere di una riga allora il curore viene posizionato sull'ultimo caarttere della riga precedente 
+          E.ry--;
+          E.rx = E.row[E.ry].size;
         }
-        
         break;
       case ARROW_RIGHT:
-        // if (row && E.cx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
-        //   E.cx++;
-        // } else if (row && E.cx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
-        //   E.cy++;
-        //   E.cx = 0;
-        // }
-        E.rx++;
+        if (row && E.rx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
+          E.rx++;
+        } else if (row && E.rx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
+          E.ry++;
+          E.rx = 0;
+        }
         break;
       case ARROW_UP:
         if (E.ry != 0) { // evita che il cursore sia posizionato in coordinata y negativa
@@ -504,17 +510,17 @@ void editorMoveCursor(int key) {
         }
         break;
     }
-
     // ----
     // questo blocchetto evita che spostandosi verticalmente comunque il limite dello scroll orizzontale (cursore che al massimo arriva fino all'ultimo carattere della riga) sia sempre rispettato e in particolare se E.cx eccede allora viene riportato al valore massiomo dato da row->size cioè la dimensione in caratteri dell'attuale riga
-    row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
+    row = (E.ry >= E.numrows) ? NULL : &E.row[E.ry];
     int rowlen = row ? row->size : 0;
-    if (E.cx > rowlen) {
-      E.cx = rowlen;
+    if (E.rx > rowlen) {
+      E.rx = rowlen;
     }
-    // ----
 
   } else {
+    // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
+    erow *row = (E.cy >= E.numrows) ? NULL : &E.row[E.cy];
     switch (key) {
       case ARROW_LEFT:
         if (E.cx != 0) {
@@ -958,19 +964,31 @@ void editorSetStatusMessage(const char *fmt, ...) {
   va_end(ap);
 }
 
+void editorRenderScroll(){
+  if (E.ry < E.rrowoff)
+    E.rrowoff = E.ry;
 
+  if (E.ry >= E.rrowoff + E.screenrows)
+    E.rrowoff = E.ry - E.screenrows + 1;
+
+  if (E.rx < E.rcoloff)
+    E.rcoloff = E.rx;
+
+  if (E.rx >= E.rcoloff + E.screencols)
+    E.rcoloff = E.rx - E.screencols + 1;
+}
 
 void editorDrawRenderRows(struct abuf *ab) {
   int y;
 
   for (y = 0; y < E.screenrows; y++) {
     
-    int filerow = y + E.rowoff;
+    int filerow = y + E.rrowoff;
     if (filerow >= E.numrows) continue;
-    int len = E.row[filerow].rsize - E.coloff;
+    int len = E.row[filerow].rsize - E.rcoloff;
     if (len < 0) len = 0;
     if (len > E.screencols) len = E.screencols;
-    abAppend(ab, &E.row[filerow].render[E.coloff], len);
+    abAppend(ab, &E.row[filerow].render[E.rcoloff], len);
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
   }
@@ -978,7 +996,7 @@ void editorDrawRenderRows(struct abuf *ab) {
 }
 
 void editorRefreshRenderScreen(){
-  editorScroll();
+  editorRenderScroll();
 
   struct abuf ab = ABUF_INIT;
   abAppend(&ab, "\x1b[?25l", 6); // nasconde il cursore nel terminale
@@ -992,7 +1010,7 @@ void editorRefreshRenderScreen(){
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry) + 1, (E.rx) + 1); 
+  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry - E.rrowoff) + 1, (E.rx - E.rcoloff) + 1); 
 
   abAppend(&ab, buf, strlen(buf));
   // ----
@@ -1016,6 +1034,8 @@ void initEditor() {
   E.ry = 0;
   E.rowoff = 0;
   E.coloff = 0;
+  E.rrowoff = 0;
+  E.rcoloff = 0;
   E.numrows = 0;
   E.dirty = 0;
   E.row = NULL;
