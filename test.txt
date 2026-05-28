@@ -1,13 +1,43 @@
 cioa a tutti voi ciaoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-Bla \F255;100;100F\bla bla
+Bla\F255;100;100 bla bla
 ciao
-mosca\S\ dddd
-asino, mucca
+mosca\S dddd
+asino, mucca, elefante, depressione, cavallo, topo, muffa, rabbia, nervosismo, incertezza, paura, fretta, scofitta, perdita, abbandono, fuga, tentazione, fondo
 1
-e1
-e
+\B255;100;100altro testo, 123, origine, vero, falso, strada, rosa, pioggia, descritto, descritti, maledetti
 1e
 1e
-1
+1\S
 e
 0000
+asdasdasdddddddddddddddddddddddd
+wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+wwwwwwwwwwwwwwwwww
+1111111111111111111111111111111111111111111111111111
+22222222222222222222222222222222222222222222222222222222222222222
+555555555555555
+555
+55
+55
+99
+9
+9
+9
+9
+9
+9
+9
+9999999999999
+9999
+
+9999999999999999999
+8877777777777777777777
+7777777777777777777
+7777
+77
+7
+77
+77777777777777777777777
+ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZz
+KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKkkkkK

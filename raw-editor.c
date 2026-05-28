@@ -266,8 +266,8 @@ void editorUpdateRow(erow *row) {
 
   int alloc_size =
       row->size
-      - special * 15
-      - term * 3
+      - special * 13
+      - term * 2
       + 1;
 
   if (alloc_size < 1) // se entro qui ce chiaramente un problema però almeno niente crush violento
@@ -305,19 +305,19 @@ void editorUpdateRow(erow *row) {
 
     switch (row->chars[j + 1]) {
 
-      // "\S\"
+      // "\S"
       case 'S':
 
-        j += 3;
+        j += 2;
         break;
 
-      // "\F255;255;255F\"
-      // "\B255;255;255B\"
+      // "\F255;255;255F"
+      // "\B255;255;255B"
 
       case 'F':
       case 'B':
 
-        j += 15;
+        j += 13;
         break;
 
       default:
@@ -1198,7 +1198,7 @@ void editorDrawRenderRows(struct abuf *ab) {
 
         abAppend(ab, "\x1b[0m", 4);
 
-        i += 3;
+        i += 2;
 
         continue;
       }
@@ -1211,18 +1211,17 @@ void editorDrawRenderRows(struct abuf *ab) {
       if (row->chars[i + 1] == 'F' ||
           row->chars[i + 1] == 'B') {
 
-        if (i + 15 <= row->size) {
+        if (i + 13 <= row->size) {
 
           if (row->chars[i + 1] == 'F')
             abAppend(ab, "\x1b[38;2;", 7);
           else
             abAppend(ab, "\x1b[48;2;", 7);
 
-          abAppend(ab, &row->chars[i + 2], 11);
-
+          abAppend(ab, &row->chars[i + 2], 11); // copia decimali canali RGB
           abAppend(ab, "m", 1);
 
-          i += 15;
+          i += 13;
 
           continue;
         }
