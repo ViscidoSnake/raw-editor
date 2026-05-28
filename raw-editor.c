@@ -238,65 +238,99 @@ int editorRowCxToRx(erow *row, int cx) {
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
+
 void editorUpdateRow(erow *row) {
-  
+
   int special = 0;
   int term = 0;
 
-  // modo molto grezzo per cercare sequeze di caratteri riconosciute
   int j;
-  for (j = 0; j < row->size; j++) {
-    if ((row->chars[j] == '\\') && ((row->chars[j+1] == 'F')||(row->chars[j+1] == 'B'))) special++;
-    else if ((row->chars[j] == '\\') && (row->chars[j+1] == 'S')) term++; 
-  }
-  free(row->render);
-  
-  // da rivedere la dim della memeria allocata, ora è troppa
-  row->render = malloc(row->size - special*15 - term*3 + special*19 + term*4 + 1 );
 
-  
-  j=0;
-  int rindx=0;
-  while(j < row->size){
-    if (row->chars[j] != '\\') {
-      row->render[rindx] = row->chars[j];
-      rindx++;
-      j++;
+  for (j = 0; j < row->size - 1; j++) {
+
+    if (row->chars[j] == '\\' &&
+       (row->chars[j+1] == 'F' ||
+        row->chars[j+1] == 'B')) {
+
+      special++;
     }
-    else{
-      j++;
-      switch (row->chars[j])
-      {
+
+    else if (row->chars[j] == '\\' &&
+             row->chars[j+1] == 'S') {
+
+      term++;
+    }
+  }
+
+  free(row->render);
+
+  int alloc_size =
+      row->size
+      - special * 15
+      - term * 3
+      + 1;
+
+  if (alloc_size < 1) // se entro qui ce chiaramente un problema però almeno niente crush violento
+    alloc_size = 1;
+
+  row->render = malloc(alloc_size);
+
+  j = 0;
+  int rindx = 0;
+
+  while (j < row->size) {
+
+    // -------------------------
+    // carattere normale
+    // -------------------------
+
+    if (row->chars[j] != '\\') {
+
+      row->render[rindx++] = row->chars[j++];
+
+      continue;
+    }
+
+    // '\' finale isolato
+    if (j + 1 >= row->size) {
+
+      row->render[rindx++] = row->chars[j++];
+
+      continue;
+    }
+
+    // -------------------------
+    // sequenze speciali
+    // -------------------------
+
+    switch (row->chars[j + 1]) {
+
+      // "\S\"
       case 'S':
-        memcpy(&(row->render[rindx]),"\x1b[0m",4);
-        rindx+=4;
-        j+=2;
+
+        j += 3;
         break;
-      
+
+      // "\F255;255;255F\"
+      // "\B255;255;255B\"
+
       case 'F':
       case 'B':
-        if(row->chars[j] == 'F') memcpy(&(row->render[rindx]),"\x1b[38;2;",7);
-        else memcpy(&(row->render[rindx]),"\x1b[48;2;",7);
-        rindx+=7;
-        j+=1;
-        memcpy(&(row->render[rindx]), &(row->chars[j]), 11);
-        rindx+=11;
-        j+=11;
-        row->render[rindx] = 'm';
-        rindx+=1;
-        j+=2;
-      break;
-      
-      default:
-          row->render[rindx] = row->chars[j];
-          j++;
-          rindx++;
+
+        j += 15;
         break;
-      }
+
+      default:
+
+        // non riconosciuta:
+        // copia '\' normalmente
+
+        row->render[rindx++] =row->chars[j++];
+
+        break;
     }
-    
   }
-  
+
   row->render[rindx] = '\0';
   row->rsize = rindx;
 }
@@ -488,13 +522,13 @@ void editorMoveCursor(int key) {
           E.rx--;
         } else if (E.ry > 0) { // implementa il fatto che premendo arrow left quando si è sul primo carattere di una riga allora il curore viene posizionato sull'ultimo caarttere della riga precedente 
           E.ry--;
-          E.rx = E.row[E.ry].size;
+          E.rx = E.row[E.ry].rsize;
         }
         break;
       case ARROW_RIGHT:
-        if (row && E.rx < row->size) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
+        if (row && E.rx < row->rsize) { // con questo controllo evito che si possa verificare uno scroll orizzontale che vada oltre l'ultimo carattere presente nella riga (per essere precisi, il cursore si posiziona in corrispondenza del carattere terminatore che nel terminale è renderizzato come uno spazio essendo non stampabile)
           E.rx++;
-        } else if (row && E.rx == row->size) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
+        } else if (row && E.rx == row->rsize) { // implementa il fatto che premendo arrow right quando il cursore è alla fine del carattere della riga corrente questo viene posizionato all'inizio del carattere della riga successiva
           E.ry++;
           E.rx = 0;
         }
@@ -964,6 +998,9 @@ void editorSetStatusMessage(const char *fmt, ...) {
   va_end(ap);
 }
 
+
+
+
 void editorRenderScroll(){
   if (E.ry < E.rrowoff)
     E.rrowoff = E.ry;
@@ -978,22 +1015,245 @@ void editorRenderScroll(){
     E.rcoloff = E.rx - E.screencols + 1;
 }
 
-void editorDrawRenderRows(struct abuf *ab) {
-  int y;
+// void editorDrawRenderRows(struct abuf *ab) {
+//   int y;
 
-  for (y = 0; y < E.screenrows; y++) {
+//   for (y = 0; y < E.screenrows; y++) {
     
+//     // int filerow = y + E.rrowoff;
+//     // if (filerow >= E.numrows) continue;
+//     // int len = E.row[filerow].rsize - E.rcoloff;
+//     // if (len < 0) len = 0;
+//     // if (len > E.screencols) len = E.screencols;
+
+
+//     // abAppend(ab, &E.row[filerow].render[E.rcoloff], len);
+    
+    
+//     // abAppend(ab, "\x1b[K", 3);
+//     // abAppend(ab, "\r\n", 2);
+
+
+//     int filerow = y + E.rrowoff;
+//     if (filerow >= E.numrows) continue;
+//     // if (len < 0) len = 0;
+//     // if (len > E.screencols) len = E.screencols;
+
+
+//     // fai diretto qui, 
+//     int skip = E.rcoloff;
+//     erow* row = &(E.row[filerow]);
+//     int i = 0;
+//     while (i < row->size) {
+
+//       // -------------------------
+//       // carattere normale
+//       // -------------------------
+
+//       if (row->chars[i] != '\\') {
+//         skip--;
+//         if(skip >= 0){
+//           abAppend(ab, &(row->chars[i]), 1);
+//         }
+//         i++;
+//         continue;
+//       }
+
+//       // '\' finale isolato
+//       // if (i + 1 >= row->size) {
+
+//       //   row->render[rindx++] = row->chars[j++];
+
+//       //   continue;
+//       // }
+
+//       // -------------------------
+//       // sequenze speciali
+//       // -------------------------
+
+//       switch (row->chars[i + 1]) {
+
+//         // "\S\"
+//         case 'S':
+
+//           i += 3;
+//           abAppend(ab, "\x1b[0m", 4);
+//           break;
+
+//         // "\F255;255;255F\"
+//         // "\B255;255;255B\"
+
+//         case 'F':
+//         case 'B':
+
+//           if(row->chars[i + 1] == 'F')
+//               abAppend(ab, "\x1b[38;2;", 7);
+//           else
+//               abAppend(ab, "\x1b[48;2;", 7);
+
+//           abAppend(ab, &(row->chars[i + 2]), 11);
+
+//           abAppend(ab, "m", 1);
+
+//           i += 15;
+
+//           break;
+
+//         default:
+
+//           // non riconosciuta:
+//           // copia '\' normalmente
+
+//           skip--;
+//           if(skip >= 0){
+//             abAppend(ab, &(row->chars[i]), 1);
+//           }
+//           i++;
+//           break;
+//       }
+//     }
+
+    
+
+
+
+//     abAppend(ab, "\x1b[K", 3);
+//     abAppend(ab, "\r\n", 2);
+//   }
+
+// }
+
+void editorDrawRenderRows(struct abuf *ab) {
+
+  for (int y = 0; y < E.screenrows; y++) {
+
     int filerow = y + E.rrowoff;
-    if (filerow >= E.numrows) continue;
-    int len = E.row[filerow].rsize - E.rcoloff;
-    if (len < 0) len = 0;
-    if (len > E.screencols) len = E.screencols;
-    abAppend(ab, &E.row[filerow].render[E.rcoloff], len);
+
+    if (filerow >= E.numrows) {
+      abAppend(ab, "~", 1);
+      abAppend(ab, "\x1b[K", 3);
+      abAppend(ab, "\r\n", 2);
+      continue;
+    }
+
+    erow *row = &E.row[filerow];
+
+    // colonne visuali da saltare
+    int skip = E.rcoloff;
+
+    // colonne visuali disegnate
+    int drawn = 0;
+
+    int i = 0;
+
+    while (i < row->size) {
+
+      // --------------------------------
+      // evita accessi fuori buffer
+      // --------------------------------
+
+      if (i + 1 >= row->size) {
+
+        if (skip > 0) {
+          skip--;
+        }
+        else if (drawn < E.screencols) {
+
+          abAppend(ab, &row->chars[i], 1);
+
+          drawn++;
+        }
+
+        i++;
+
+        continue;
+      }
+
+      // --------------------------------
+      // carattere normale
+      // --------------------------------
+
+      if (row->chars[i] != '\\') {
+
+        if (skip > 0) {
+          skip--;
+        }
+        else if (drawn < E.screencols) {
+
+          abAppend(ab, &row->chars[i], 1);
+
+          drawn++;
+        }
+
+        i++;
+
+        continue;
+      }
+
+      // --------------------------------
+      // \S'\'
+      // --------------------------------
+
+      if (row->chars[i + 1] == 'S') {
+
+        abAppend(ab, "\x1b[0m", 4);
+
+        i += 3;
+
+        continue;
+      }
+
+      // --------------------------------
+      // \F255;255;255F'\'
+      // \B255;255;255B'\'
+      // --------------------------------
+
+      if (row->chars[i + 1] == 'F' ||
+          row->chars[i + 1] == 'B') {
+
+        if (i + 15 <= row->size) {
+
+          if (row->chars[i + 1] == 'F')
+            abAppend(ab, "\x1b[38;2;", 7);
+          else
+            abAppend(ab, "\x1b[48;2;", 7);
+
+          abAppend(ab, &row->chars[i + 2], 11);
+
+          abAppend(ab, "m", 1);
+
+          i += 15;
+
+          continue;
+        }
+      }
+
+      // --------------------------------
+      // fallback:
+      // '\' normale
+      // --------------------------------
+
+      if (skip > 0) {
+        skip--;
+      }
+      else if (drawn < E.screencols) {
+
+        abAppend(ab, &row->chars[i], 1);
+
+        drawn++;
+      }
+
+      i++;
+    }
+
+    // reset stile sicurezza
+    // abAppend(ab, "\x1b[0m", 4);
+
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
   }
-
 }
+
 
 void editorRefreshRenderScreen(){
   editorRenderScroll();
