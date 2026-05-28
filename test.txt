@@ -1,5 +1,5 @@
 cioa a tutti voi ciaoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
-Bla \F255;100;100\Fbla bla
+Bla \F255;100;100F\bla bla
 ciao
 mosca\S\ dddd
 asino, mucca
