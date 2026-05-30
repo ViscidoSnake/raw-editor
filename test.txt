@@ -4,7 +4,7 @@ ciao
 mosca\S dddd
 asino, mucca, elefante, depressione, cavallo, topo, muffa, rabbia, nervosismo, incertezza, paura, fretta, scofitta, perdita, abbandono, fuga, tentazione, fondo
 1
-\B255;100;100altro testo, 123, origine, vero, falso, strada, rosa, pioggia, descritto, descritti, maledetti
+\B255;100;100\F000;059;100altro testo, 123, origine, vero, falso, strada, rosa, pioggia, descritto, descritti, maledetti
 1e
 1e
 1\S

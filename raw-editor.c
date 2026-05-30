@@ -35,7 +35,10 @@ enum editorKey {
   DEL_KEY,
   PAGE_DOWN,
   HOME_KEY,
-  END_KEY
+  END_KEY,
+  ALT_f,
+  ALT_b,
+  ALT_s
 };
 
 /*** data ***/
@@ -64,12 +67,14 @@ struct editorConfig {
   time_t statusmsg_time;
   int mod;
   int render;
+  int mcolors;
   struct termios orig_termios;
 };
 struct editorConfig E;
 
 /*** prototypes ***/
 void editorSetStatusMessage(const char *fmt, ...);
+void editorInsertChar(int c);
 
 /*** terminal ***/
 
@@ -116,6 +121,43 @@ int editorReadKey() {
     if (nread == -1 && errno != EAGAIN) die("read");
   }
 
+  // modalità colore, se attiva stampa una sequenza rgb in funzione del carattere premuto
+  if(E.mcolors){
+    char buf[12];
+    switch (c) {
+    case '1': 
+      memcpy(buf,"255;000;000",11);
+      break;
+
+    case '2':
+      memcpy(buf,"255;255;000",11);
+      break;
+
+    case '3':
+      memcpy(buf,"255;000;255",11);
+      break;
+
+    case '4':
+      memcpy(buf,"000;255;000",11);
+      break;
+
+    case '5':
+      memcpy(buf,"000;000;255",11);
+      break;
+
+    default:
+      memcpy(buf,"000;000;255",11); // blu colore di default
+      break;
+    }
+    
+    for(int i = 0; i < 11; i++){
+      editorInsertChar(buf[i]);
+    }
+
+    E.mcolors = 0;
+    return 129;
+  }
+
   // controllo fondamentale, in pratica mi assicuro di processare solo caratteri ASCII code escludendo sostanzialmente sutto ciò che è UTF-8, per fare il conrollo faccio AND bitwise del byte letto e mi assicuro sempre che il bit più significativo sia 0 in quanto i caratteri ASCII vanno da 0 (00000000) a 127 (01111111) 
   if ((c & 0x80) != 0) {
     return 128;
@@ -124,8 +166,8 @@ int editorReadKey() {
   if (c == '\x1b') {
     char seq[3];
     if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
-    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
     if (seq[0] == '[') {
+      if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
       if (seq[1] >= '0' && seq[1] <= '9') {
         if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
         if (seq[2] == '~') {
@@ -153,6 +195,15 @@ int editorReadKey() {
       switch (seq[1]) {
         case 'H': return HOME_KEY;
         case 'F': return END_KEY;
+      }
+    } else {
+      switch (seq[0]) {
+      case 'f': return ALT_f;
+      case 'b': return ALT_b;
+      case 's': return ALT_s;
+      
+      default:
+        break;
       }
     }
     return '\x1b';
@@ -241,41 +292,45 @@ int editorRowCxToRx(erow *row, int cx) {
 
 void editorUpdateRow(erow *row) {
 
-  int special = 0;
-  int term = 0;
+  // int special = 0;
+  // int term = 0;
 
-  int j;
+  // int j;
 
-  for (j = 0; j < row->size - 1; j++) {
+  // for (j = 0; j < row->size - 1; j++) {
 
-    if (row->chars[j] == '\\' &&
-       (row->chars[j+1] == 'F' ||
-        row->chars[j+1] == 'B')) {
+  //   if (row->chars[j] == '\\' &&
+  //      (row->chars[j+1] == 'F' ||
+  //       row->chars[j+1] == 'B')) {
 
-      special++;
-    }
+  //     special++;
+  //   }
 
-    else if (row->chars[j] == '\\' &&
-             row->chars[j+1] == 'S') {
+  //   else if (row->chars[j] == '\\' &&
+  //            row->chars[j+1] == 'S') {
 
-      term++;
-    }
-  }
+  //     term++;
+  //   }
+  // }
+
+
+  // int alloc_size =
+  //     row->size
+  //     - special * 13
+  //     - term * 2
+  //     + 1;
+
+  // free(row->render);
+  
+  // int alloc_size = row->size + 1;
+ 
+  // if (alloc_size < 1) // se entro qui ce chiaramente un problema però almeno niente crush violento
+  //   alloc_size = 1;
 
   free(row->render);
+  row->render = malloc(row->size + 1);
 
-  int alloc_size =
-      row->size
-      - special * 13
-      - term * 2
-      + 1;
-
-  if (alloc_size < 1) // se entro qui ce chiaramente un problema però almeno niente crush violento
-    alloc_size = 1;
-
-  row->render = malloc(alloc_size);
-
-  j = 0;
+  int j = 0;
   int rindx = 0;
 
   while (j < row->size) {
@@ -311,13 +366,14 @@ void editorUpdateRow(erow *row) {
         j += 2;
         break;
 
-      // "\F255;255;255F"
-      // "\B255;255;255B"
+      // "\F255;255;255"
+      // "\B255;255;255"
 
       case 'F':
       case 'B':
-
-        j += 13;
+        if (j + 13 >= row->size) { // controllo importantissimo, serve per non far crush nel momento in cui si scrive una sequenza alla fine di una riga o comunque dove successivamente all'inizio della sequenz non sono presenti almeno 13 caratteri 
+          row->render[rindx++] = row->chars[j++];
+        } else j += 13;
         break;
 
       default:
@@ -325,7 +381,7 @@ void editorUpdateRow(erow *row) {
         // non riconosciuta:
         // copia '\' normalmente
 
-        row->render[rindx++] =row->chars[j++];
+        row->render[rindx++] = row->chars[j++];
 
         break;
     }
@@ -606,6 +662,10 @@ void editorProcessKeypress() {
       editorSetStatusMessage("WARNING!!! Il carattere digitato non è ASCII code quindi non può essere inserito!");
       break;
     
+    case 129:
+      editorSetStatusMessage("INFO Uscita dalla modalità colore");
+      break;
+    
     case '\r': // estrema attenzione, ricordati che ottieni questo valore (13 decimale) premendo sulla tastiera la combinazione Ctrl - m !!! (quindi non puoi usarla)
       editorInsertNewline();
       break;
@@ -678,6 +738,22 @@ void editorProcessKeypress() {
     
     case CTRL_KEY('l'):
     case '\x1b':
+      break;
+
+    case ALT_f:
+    case ALT_b:
+      E.mcolors = 1;
+      editorSetStatusMessage("INFO Modalità colore attiva");
+      editorInsertChar('\\');
+
+      if (c == ALT_f) editorInsertChar('F');
+      else editorInsertChar('B');
+
+      break;
+
+    case ALT_s:
+      editorInsertChar('\\');
+      editorInsertChar('S');
       break;
 
 
@@ -1015,113 +1091,6 @@ void editorRenderScroll(){
     E.rcoloff = E.rx - E.screencols + 1;
 }
 
-// void editorDrawRenderRows(struct abuf *ab) {
-//   int y;
-
-//   for (y = 0; y < E.screenrows; y++) {
-    
-//     // int filerow = y + E.rrowoff;
-//     // if (filerow >= E.numrows) continue;
-//     // int len = E.row[filerow].rsize - E.rcoloff;
-//     // if (len < 0) len = 0;
-//     // if (len > E.screencols) len = E.screencols;
-
-
-//     // abAppend(ab, &E.row[filerow].render[E.rcoloff], len);
-    
-    
-//     // abAppend(ab, "\x1b[K", 3);
-//     // abAppend(ab, "\r\n", 2);
-
-
-//     int filerow = y + E.rrowoff;
-//     if (filerow >= E.numrows) continue;
-//     // if (len < 0) len = 0;
-//     // if (len > E.screencols) len = E.screencols;
-
-
-//     // fai diretto qui, 
-//     int skip = E.rcoloff;
-//     erow* row = &(E.row[filerow]);
-//     int i = 0;
-//     while (i < row->size) {
-
-//       // -------------------------
-//       // carattere normale
-//       // -------------------------
-
-//       if (row->chars[i] != '\\') {
-//         skip--;
-//         if(skip >= 0){
-//           abAppend(ab, &(row->chars[i]), 1);
-//         }
-//         i++;
-//         continue;
-//       }
-
-//       // '\' finale isolato
-//       // if (i + 1 >= row->size) {
-
-//       //   row->render[rindx++] = row->chars[j++];
-
-//       //   continue;
-//       // }
-
-//       // -------------------------
-//       // sequenze speciali
-//       // -------------------------
-
-//       switch (row->chars[i + 1]) {
-
-//         // "\S\"
-//         case 'S':
-
-//           i += 3;
-//           abAppend(ab, "\x1b[0m", 4);
-//           break;
-
-//         // "\F255;255;255F\"
-//         // "\B255;255;255B\"
-
-//         case 'F':
-//         case 'B':
-
-//           if(row->chars[i + 1] == 'F')
-//               abAppend(ab, "\x1b[38;2;", 7);
-//           else
-//               abAppend(ab, "\x1b[48;2;", 7);
-
-//           abAppend(ab, &(row->chars[i + 2]), 11);
-
-//           abAppend(ab, "m", 1);
-
-//           i += 15;
-
-//           break;
-
-//         default:
-
-//           // non riconosciuta:
-//           // copia '\' normalmente
-
-//           skip--;
-//           if(skip >= 0){
-//             abAppend(ab, &(row->chars[i]), 1);
-//           }
-//           i++;
-//           break;
-//       }
-//     }
-
-    
-
-
-
-//     abAppend(ab, "\x1b[K", 3);
-//     abAppend(ab, "\r\n", 2);
-//   }
-
-// }
 
 void editorDrawRenderRows(struct abuf *ab) {
 
@@ -1303,6 +1272,7 @@ void initEditor() {
   E.statusmsg_time = 0;
   E.mod = 1;
   E.render = 0;
+  E.mcolors = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
