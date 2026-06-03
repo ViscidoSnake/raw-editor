@@ -714,6 +714,16 @@ void editorProcessKeypress() {
       if (c == ALT_f) editorInsertChar('F');
       else editorInsertChar('B');
 
+      //inserisce \S finale alla riga su cui sto inserendo \F o \B
+      int memcx = E.cx;
+      while(E.row[E.cy].chars[E.cx] != '\0') {
+        editorMoveCursor(ARROW_RIGHT);
+      }
+      editorInsertChar('\\');
+      editorInsertChar('S');
+
+      E.cx = memcx;
+      
       break;
 
     case ALT_s:
