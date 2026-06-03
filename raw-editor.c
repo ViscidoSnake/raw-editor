@@ -244,47 +244,38 @@ int getWindowSize(int *rows, int *cols) {
 /*** row operations ***/
 
 // questa funziona calcola dinamicamente la posizione che deve avere il cursore nell'interfaccia di editor, è fondamentale perchè caratteri come il tab (\t) vengono renderizzati come sequenza di più spazzi!
-int editorRowCxToRx(erow *row, int cx) {
-  
-  // da rifare
-  
-  int rx = 0;
-  int j = 0;
-  for (j = 0; j < cx; j++) {
-    if (row->chars[j] == '\t')
-      rx += (KILO_TAB_STOP - 1) - (rx % KILO_TAB_STOP);
-    rx++;
+int editorRowRxToCx(erow *row, int rx) {
+
+  int cx = 0;
+  int visual = 0;
+
+  while (cx < row->size && (visual < rx || row->chars[cx] == '\\')) {
+
+    if (row->chars[cx] == '\\' && cx + 1 < row->size) {
+
+      switch (row->chars[cx + 1]) {
+
+        case 'S':
+          cx += 2;
+          continue;
+
+        case 'F':
+        case 'B':
+          cx += 13;
+          continue;
+      }
+
+    cx++;
+    visual++;
+
+    } else {
+      cx++;
+      visual++;
+    }
   }
-  return rx;
 
-  // while(j < cx){
-  //   if (row->chars[j] != '\\') {
-  //     rx++;
-  //     j++;
-  //   } else {
-  //     switch (row->chars[j+1]) {
-  //       case 's':
-  //         rx+=1;
-  //         j+=2;
-
-  //         break;
-    
-  //       case 'f':
-  //       case 'b':
-  //         // rx+=8;
-  //         rx+=3;
-  //         j+=15;
-          
-  //       break;
-        
-  //       default:
-  //         j++;
-  //         break;
-  //     }
-  //   }
-  // }
-
-  // return rx;
+  
+  return cx;
 }
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
@@ -572,6 +563,9 @@ void editorMoveCursor(int key) {
     if (E.rx > rowlen) {
       E.rx = rowlen;
     }
+
+    E.cy = E.ry;
+    E.cx = row ? editorRowRxToCx(row, E.rx) : 0;
 
   } else {
     // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
