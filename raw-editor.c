@@ -292,41 +292,6 @@ int editorRowCxToRx(erow *row, int cx) {
 
 void editorUpdateRow(erow *row) {
 
-  // int special = 0;
-  // int term = 0;
-
-  // int j;
-
-  // for (j = 0; j < row->size - 1; j++) {
-
-  //   if (row->chars[j] == '\\' &&
-  //      (row->chars[j+1] == 'F' ||
-  //       row->chars[j+1] == 'B')) {
-
-  //     special++;
-  //   }
-
-  //   else if (row->chars[j] == '\\' &&
-  //            row->chars[j+1] == 'S') {
-
-  //     term++;
-  //   }
-  // }
-
-
-  // int alloc_size =
-  //     row->size
-  //     - special * 13
-  //     - term * 2
-  //     + 1;
-
-  // free(row->render);
-  
-  // int alloc_size = row->size + 1;
- 
-  // if (alloc_size < 1) // se entro qui ce chiaramente un problema però almeno niente crush violento
-  //   alloc_size = 1;
-
   free(row->render);
   row->render = malloc(row->size + 1);
 
@@ -603,7 +568,7 @@ void editorMoveCursor(int key) {
     // ----
     // questo blocchetto evita che spostandosi verticalmente comunque il limite dello scroll orizzontale (cursore che al massimo arriva fino all'ultimo carattere della riga) sia sempre rispettato e in particolare se E.cx eccede allora viene riportato al valore massiomo dato da row->size cioè la dimensione in caratteri dell'attuale riga
     row = (E.ry >= E.numrows) ? NULL : &E.row[E.ry];
-    int rowlen = row ? row->size : 0;
+    int rowlen = row ? row->rsize : 0;
     if (E.rx > rowlen) {
       E.rx = rowlen;
     }
@@ -819,38 +784,173 @@ void editorScroll() {
 
 }
 
-void editorDrawRows(struct abuf *ab) {
-  int y;
-  for (y = 0; y < E.screenrows; y++) {
-    int filerow = y + E.rowoff;
-    if (filerow >= E.numrows) {
-      if (E.numrows == 0 && y == E.screenrows / 3) { // scrive il messaggio di benvenuto solo se non viene passato nessun file in input  
-        //----
-        // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
-        char welcome[80];
-        int welcomelen = snprintf(welcome, sizeof(welcome),
-          "raw-editor -- version %s", RAW_EDITOR_VERSION);
-        if (welcomelen > E.screencols) welcomelen = E.screencols;
-        // per centrare testo
-        int padding = (E.screencols - welcomelen) / 2;
-        if (padding) {
-          abAppend(ab, "~", 1);
-          padding--;
-        }
-        while (padding--) abAppend(ab, " ", 1);
+// void editorDrawRows(struct abuf *ab) {
+//   int y;
+//   for (y = 0; y < E.screenrows; y++) {
+//     if (filerow >= E.numrows) {
+//       if (E.numrows == 0 && y == E.screenrows / 3) { // scrive il messaggio di benvenuto solo se non viene passato nessun file in input  
+//         //----
+//         // interessante questo blocco perchè usa la scanf per scrivere dentro un buffer una serie di caratteri, il buffer a sua volta viene poi caricato nella lista di strighe da scrivere
+//         char welcome[80];
+//         int welcomelen = snprintf(welcome, sizeof(welcome),
+//           "raw-editor -- version %s", RAW_EDITOR_VERSION);
+//         if (welcomelen > E.screencols) welcomelen = E.screencols;
+//         // per centrare testo
+//         int padding = (E.screencols - welcomelen) / 2;
+//         if (padding) {
+//           abAppend(ab, "~", 1);
+//           padding--;
+//         }
+//         while (padding--) abAppend(ab, " ", 1);
         
-        abAppend(ab, welcome, welcomelen);
-        //----
-      } else {
-        abAppend(ab, "~", 1);
-      }
-    } else {
-      // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
-      int len = E.row[filerow].size - E.coloff;
-      if (len < 0) len = 0;
-      if (len > E.screencols) len = E.screencols;
-      abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+//         abAppend(ab, welcome, welcomelen);
+//         //----
+//       } else {
+//         abAppend(ab, "~", 1);
+//       }
+//     } else {
+//       // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
+//       int len = E.row[filerow].size - E.coloff;
+//       if (len < 0) len = 0;
+//       if (len > E.screencols) len = E.screencols;
+//       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+//     }
+//     abAppend(ab, "\x1b[K", 3);
+//     abAppend(ab, "\r\n", 2);
+//   }
+// }
+
+// void editorDrawRows(struct abuf *ab) {
+//   int y;
+//   for (y = 0; y < E.screenrows; y++) {
+//     int filerow = y + E.rowoff;
+//     if (filerow >= E.numrows) {
+//       abAppend(ab, "~", 1);
+//     } else {
+//       // len contiene la lunghezza della riga da scrivere ed è data come la lunghezza effettiva della stringa meno il numero di caratteri offset (ricorda che offset è sempre positivo ed è applicato a destra dello schermo)
+//       int len = E.row[filerow].size - E.coloff;
+//       if (len < 0) len = 0;
+//       if (len > E.screencols) len = E.screencols;
+//       abAppend(ab, &E.row[filerow].chars[E.coloff], len);
+//     }
+//     abAppend(ab, "\x1b[K", 3);
+//     abAppend(ab, "\r\n", 2);
+//   }
+// }
+void editorDrawRows(struct abuf *ab) {
+
+  for (int y = 0; y < E.screenrows; y++) {
+
+    int filerow = y + E.rowoff;
+
+    if (filerow >= E.numrows) {
+      abAppend(ab, "~", 1);
+      abAppend(ab, "\x1b[K", 3);
+      abAppend(ab, "\r\n", 2);
+      continue;
     }
+
+    erow *row = &E.row[filerow];
+
+    int skip  = E.coloff;
+    int drawn = 0;
+    int i     = 0;
+
+    while (i < row->size && drawn < E.screencols) {
+
+      char *token_ptr;
+      int token_len;
+      int special = 0;
+
+      /* ------------------------- */
+      /* riconoscimento token      */
+      /* ------------------------- */
+
+      if (row->chars[i] == '\\') {
+
+        /* \S */
+
+        if (i + 1 < row->size &&
+            row->chars[i + 1] == 'S') {
+
+          token_ptr = &row->chars[i];
+          token_len = 2;
+          special = 1;
+        }
+
+        /* \F255;255;100 */
+        /* \B255;255;100 */
+
+        else if (i + 13 <= row->size &&
+                 (row->chars[i + 1] == 'F' ||
+                  row->chars[i + 1] == 'B')) {
+
+          token_ptr = &row->chars[i];
+          token_len = 13;
+          special = 1;
+        }
+
+        else {
+
+          token_ptr = &row->chars[i];
+          token_len = 1;
+        }
+
+      } else {
+
+        token_ptr = &row->chars[i];
+        token_len = 1;
+      }
+
+      /* ------------------------- */
+      /* scroll orizzontale        */
+      /* ------------------------- */
+
+      int start = 0;
+
+      if (skip > 0) {
+
+        if (skip >= token_len) {
+          skip -= token_len;
+          i += token_len;
+          continue;
+        }
+
+        start = skip;
+        skip = 0;
+      }
+
+      /* ------------------------- */
+      /* clipping destro           */
+      /* ------------------------- */
+
+      int visible_len = token_len - start;
+
+      if (visible_len > E.screencols - drawn)
+        visible_len = E.screencols - drawn;
+
+      if (visible_len <= 0)
+        break;
+
+      /* ------------------------- */
+      /* stampa                    */
+      /* ------------------------- */
+
+      if (special) {
+
+        abAppend(ab, "\x1b[31m", 5);
+        abAppend(ab, token_ptr + start, visible_len);
+        abAppend(ab, "\x1b[0m", 4);
+
+      } else {
+
+        abAppend(ab, token_ptr + start, visible_len);
+      }
+
+      drawn += visible_len;
+      i += token_len;
+    }
+
     abAppend(ab, "\x1b[K", 3);
     abAppend(ab, "\r\n", 2);
   }
@@ -1091,7 +1191,6 @@ void editorRenderScroll(){
     E.rcoloff = E.rx - E.screencols + 1;
 }
 
-
 void editorDrawRenderRows(struct abuf *ab) {
 
   for (int y = 0; y < E.screenrows; y++) {
@@ -1221,7 +1320,6 @@ void editorDrawRenderRows(struct abuf *ab) {
     abAppend(ab, "\r\n", 2);
   }
 }
-
 
 void editorRefreshRenderScreen(){
   editorRenderScroll();
