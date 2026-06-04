@@ -75,6 +75,7 @@ struct editorConfig E;
 /*** prototypes ***/
 void editorSetStatusMessage(const char *fmt, ...);
 void editorInsertChar(int c);
+void editorMoveCursor(int key);
 
 /*** terminal ***/
 
@@ -278,6 +279,118 @@ int editorRowRxToCx(erow *row, int rx) {
 }
 
 
+int editorValidColorTag(erow *row, int pos)
+{
+    if (pos + 13 > row->size)
+        return 0;
+
+    if (row->chars[pos] != '\\')
+        return 0;
+
+    if (row->chars[pos + 1] != 'F' &&
+        row->chars[pos + 1] != 'B')
+        return 0;
+
+    char buf[12];
+
+    memcpy(buf, &row->chars[pos + 2], 11);
+    buf[11] = '\0';
+
+    int r, g, b;
+
+    if (sscanf(buf, "%d;%d;%d", &r, &g, &b) != 3)
+        return 0;
+
+    if (r < 0 || r > 255)
+        return 0;
+
+    if (g < 0 || g > 255)
+        return 0;
+
+    if (b < 0 || b > 255)
+        return 0;
+
+    return 1;
+}
+int editorRowCxToRx(erow *row, int cx) {
+
+    int rx = 0;
+    int i = 0;
+
+    while (i < cx && i < row->size) {
+
+        /* -------------------------
+           carattere normale
+           ------------------------- */
+
+        if (row->chars[i] != '\\') {
+            rx++;
+            i++;
+            continue;
+        }
+
+        /* '\' finale isolato */
+
+        if (i + 1 >= row->size) {
+            rx++;
+            i++;
+            continue;
+        }
+
+        /* -------------------------
+           \S
+           ------------------------- */
+
+        if (row->chars[i + 1] == 'S') {
+
+            /*
+             * Se cx è dentro "\S"
+             * posiziona il cursore
+             * dopo il tag.
+             */
+
+            if (cx >= i && cx < i + 2)
+                return rx;
+
+            i += 2;
+            continue;
+        }
+
+        /* -------------------------
+           \F255;255;255
+           \B255;255;255
+           ------------------------- */
+
+        if ((row->chars[i + 1] == 'F' ||
+             row->chars[i + 1] == 'B') &&
+            editorValidColorTag(row, i)) {
+
+            /*
+             * Se cx è dentro il tag,
+             * mostra il cursore
+             * dopo il tag.
+             */
+
+            if (cx >= i && cx < i + 13)
+                return rx;
+
+            i += 13;
+            continue;
+        }
+
+        /* -------------------------
+           qualsiasi altra sequenza
+           viene trattata come testo
+           normale
+           ------------------------- */
+
+        rx++;
+        i++;
+    }
+
+    return rx;
+}
+
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
 
@@ -410,6 +523,7 @@ void editorInsertChar(int c) {
   }
   editorRowInsertChar(&E.row[E.cy], E.cx, c);
   E.cx++;
+  E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
 }
 
 void editorInsertNewline() {
@@ -440,6 +554,10 @@ void editorDelChar() {
     editorDelRow(E.cy);
     E.cy--;
   }
+  
+  E.ry = E.cy;
+  E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+
 }
 
 
@@ -605,6 +723,11 @@ void editorMoveCursor(int key) {
     if (E.cx > rowlen) {
       E.cx = rowlen;
     }
+    
+    E.ry = E.cy;
+    E.rx = row ? editorRowCxToRx(row, E.cx) : 0;
+
+
   }
 
   
@@ -1356,12 +1479,15 @@ void editorRefreshRenderScreen(){
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry - E.rrowoff) + 1, (E.rx - E.rcoloff) + 1); 
-
+  
   abAppend(&ab, buf, strlen(buf));
   // ----
 
   abAppend(&ab, "\x1b[0m", 4);
-  abAppend(&ab, "\x1b[?25h", 6); // rende nuovamente visibile il cursore
+
+  // if che serve per evitare brutto e strano effetto per il quale nella modalità render, inserendo un tag, mentre si è nella modalità colore il cursore viene spostato anche se tuttavia la coordinata rx resta valida
+  if(E.mcolors==0) abAppend(&ab, "\x1b[?25h", 6); // rende nuovamente visibile il cursore
+
 
   write(STDOUT_FILENO, ab.b, ab.len);
   
