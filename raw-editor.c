@@ -243,7 +243,6 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
-// questa funziona calcola dinamicamente la posizione che deve avere il cursore nell'interfaccia di editor, è fondamentale perchè caratteri come il tab (\t) vengono renderizzati come sequenza di più spazzi!
 int editorRowRxToCx(erow *row, int rx) {
 
   int cx = 0;
@@ -277,6 +276,7 @@ int editorRowRxToCx(erow *row, int rx) {
   
   return cx;
 }
+
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
@@ -1280,24 +1280,39 @@ void editorDrawRenderRows(struct abuf *ab) {
       // \B255;255;255B'\'
       // --------------------------------
 
-      if (row->chars[i + 1] == 'F' ||
-          row->chars[i + 1] == 'B') {
+    if (row->chars[i + 1] == 'F' || row->chars[i + 1] == 'B') {
 
-        if (i + 13 <= row->size) {
+      if (i + 13 <= row->size) {
+
+        char buf[12];
+
+        memcpy(buf, &row->chars[i + 2], 11);
+        buf[11] = '\0';
+
+        int r = -1;
+        int g = -1;
+        int b = -1;
+
+        int valid = sscanf(buf, "%d;%d;%d", &r, &g, &b) == 3 &&
+          r >= 0 && r <= 255 &&
+          g >= 0 && g <= 255 &&
+          b >= 0 && b <= 255;
+
+        if (valid) {
 
           if (row->chars[i + 1] == 'F')
             abAppend(ab, "\x1b[38;2;", 7);
           else
             abAppend(ab, "\x1b[48;2;", 7);
 
-          abAppend(ab, &row->chars[i + 2], 11); // copia decimali canali RGB
+          abAppend(ab, &row->chars[i + 2], 11);
           abAppend(ab, "m", 1);
 
           i += 13;
-
           continue;
         }
       }
+    }
 
       // --------------------------------
       // fallback:
