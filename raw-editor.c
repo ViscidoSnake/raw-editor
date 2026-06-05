@@ -523,6 +523,7 @@ void editorInsertChar(int c) {
   }
   editorRowInsertChar(&E.row[E.cy], E.cx, c);
   E.cx++;
+  
   E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
 }
 
@@ -539,6 +540,10 @@ void editorInsertNewline() {
   }
   E.cy++;
   E.cx = 0;
+
+  E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+  E.ry = E.cy;
+
 }
 
 void editorDelChar() {
@@ -833,9 +838,9 @@ void editorProcessKeypress() {
 
       //inserisce \S finale alla riga su cui sto inserendo \F o \B
       int memcx = E.cx;
-      while(E.row[E.cy].chars[E.cx] != '\0') {
-        editorMoveCursor(ARROW_RIGHT);
-      }
+
+      E.cx = E.row[E.cy].size;
+
       editorInsertChar('\\');
       editorInsertChar('S');
 
