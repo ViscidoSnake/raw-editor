@@ -1,37 +1,37 @@
 cioa a tutti voi ciaoooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
 Bla\F255;100;100 bla bla
 ciao
-mosca\S dddd
-asino, mucca, elefante, depressione, cavallo, topo, muffa, rabbia, nervosismo, incertezza, paura, fretta, scofitta, perdita, abbandono, fuga, tentazione, fondo
-1
+mosca\S
+asino, mucca, elefante
 \B255;100;100\F000;059;100altro testo, 123, origine, vero, falso, strada, rosa, pioggia, descritto, descritti, maledetti
-1e
-1e
-1\S
-e
+1ekkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk
+1e0000000000000000000000000000099999999999999999999999999999999999999999999999999999999999999999
+1,,,,,,,,,,,,,,0000000000000000''''''mmmmmmmmmmmmmmmmm,,,,,,\S
+qwertyuiopasdfghjklzxcvbnm;.-
 0000
-asdasdasdddddddddddddddddddddddd
+asdasdasddddddddddddddddd\F100;200;123ddddddd
 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 wwwwwwwwwwwwwwwwww
-1111111111111111111111111111111111111111111111111111
+dd\F034;100;1111111111111111111111111111111111111111111111111111
 22222222222222222222222222222222222222222222222222222222222222222
-1
-2
+abcdefghilmnopqrstuvwxeeeeeeeeeeeeeeeeeeee\F100;200;200yeeeeeeeewwwwwwwwwwwwwwwwwwwwweeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeewzeeeeeeeeeee0123456789
+2931290312312312<<<<aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaxsxsxsxs3435112\B000;100;066
 3
+clear
 4
-5
-6
+5\S
+6aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 7
 8
 9
 10
-11
+1s1
 \P
 12
 13
 14
-15
+15aaaaaaaaaaaaaaaaaaaaaa
 16
 17
 18

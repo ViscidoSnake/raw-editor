@@ -244,41 +244,6 @@ int getWindowSize(int *rows, int *cols) {
 
 /*** row operations ***/
 
-int editorRowRxToCx(erow *row, int rx) {
-
-  int cx = 0;
-  int visual = 0;
-
-  while (cx < row->size && (visual < rx || row->chars[cx] == '\\')) {
-
-    if (row->chars[cx] == '\\' && cx + 1 < row->size) {
-
-      switch (row->chars[cx + 1]) {
-
-        case 'S':
-          cx += 2;
-          continue;
-
-        case 'F':
-        case 'B':
-          cx += 13;
-          continue;
-      }
-
-    cx++;
-    visual++;
-
-    } else {
-      cx++;
-      visual++;
-    }
-  }
-
-  
-  return cx;
-}
-
-
 int editorValidColorTag(erow *row, int pos)
 {
     if (pos + 13 > row->size)
@@ -291,105 +256,253 @@ int editorValidColorTag(erow *row, int pos)
         row->chars[pos + 1] != 'B')
         return 0;
 
-    char buf[12];
+    const char *rgb = &row->chars[pos + 2];
 
-    memcpy(buf, &row->chars[pos + 2], 11);
-    buf[11] = '\0';
-
-    int r, g, b;
-
-    if (sscanf(buf, "%d;%d;%d", &r, &g, &b) != 3)
+    if (rgb[3] != ';' || rgb[7] != ';')
         return 0;
 
-    if (r < 0 || r > 255)
-        return 0;
+    for (int i = 0; i < 11; i++) {
 
-    if (g < 0 || g > 255)
-        return 0;
+        if (i == 3 || i == 7)
+            continue;
 
-    if (b < 0 || b > 255)
-        return 0;
+        if (rgb[i] < '0' || rgb[i] > '9')
+            return 0;
+    }
 
-    return 1;
+    int r =
+        (rgb[0]-'0')*100 +
+        (rgb[1]-'0')*10 +
+        (rgb[2]-'0');
+
+    int g =
+        (rgb[4]-'0')*100 +
+        (rgb[5]-'0')*10 +
+        (rgb[6]-'0');
+
+    int b =
+        (rgb[8]-'0')*100 +
+        (rgb[9]-'0')*10 +
+        (rgb[10]-'0');
+
+    return (r <= 255 &&
+            g <= 255 &&
+            b <= 255);
 }
-int editorRowCxToRx(erow *row, int cx) {
 
+int editorRowCxToRx(erow *row, int cx)
+{
     int rx = 0;
     int i = 0;
 
     while (i < cx && i < row->size) {
 
-        /* -------------------------
-           carattere normale
-           ------------------------- */
+        if (row->chars[i] == '\\' &&
+            i + 1 < row->size) {
 
-        if (row->chars[i] != '\\') {
-            rx++;
-            i++;
-            continue;
+            /* \S */
+
+            if (row->chars[i + 1] == 'S') {
+
+                if (i + 2 <= cx)
+                    i += 2;
+                else
+                    break;
+
+                continue;
+            }
+
+            /* \F... / \B... */
+
+            if ((row->chars[i + 1] == 'F' ||
+                 row->chars[i + 1] == 'B') &&
+                editorValidColorTag(row, i)) {
+
+                if (i + 13 <= cx)
+                    i += 13;
+                else
+                    break;
+
+                continue;
+            }
         }
 
-        /* '\' finale isolato */
-
-        if (i + 1 >= row->size) {
-            rx++;
-            i++;
-            continue;
-        }
-
-        /* -------------------------
-           \S
-           ------------------------- */
-
-        if (row->chars[i + 1] == 'S') {
-
-            /*
-             * Se cx è dentro "\S"
-             * posiziona il cursore
-             * dopo il tag.
-             */
-
-            if (cx >= i && cx < i + 2)
-                return rx;
-
-            i += 2;
-            continue;
-        }
-
-        /* -------------------------
-           \F255;255;255
-           \B255;255;255
-           ------------------------- */
-
-        if ((row->chars[i + 1] == 'F' ||
-             row->chars[i + 1] == 'B') &&
-            editorValidColorTag(row, i)) {
-
-            /*
-             * Se cx è dentro il tag,
-             * mostra il cursore
-             * dopo il tag.
-             */
-
-            if (cx >= i && cx < i + 13)
-                return rx;
-
-            i += 13;
-            continue;
-        }
-
-        /* -------------------------
-           qualsiasi altra sequenza
-           viene trattata come testo
-           normale
-           ------------------------- */
-
-        rx++;
         i++;
+        rx++;
     }
 
     return rx;
 }
+int editorRowRxToCx(erow *row, int rx)
+{
+    int cx = 0;
+    int visual = 0;
+
+    while (cx < row->size) {
+
+        if (visual >= rx)
+            break;
+
+        if (row->chars[cx] == '\\' &&
+            cx + 1 < row->size) {
+
+            /* \S */
+
+            if (row->chars[cx + 1] == 'S') {
+                cx += 2;
+                continue;
+            }
+
+            /* \F... / \B... */
+
+            if ((row->chars[cx + 1] == 'F' ||
+                 row->chars[cx + 1] == 'B') &&
+                editorValidColorTag(row, cx)) {
+
+                cx += 13;
+                continue;
+            }
+        }
+
+        cx++;
+        visual++;
+    }
+
+    return cx;
+}
+// int editorRowRxToCx(erow *row, int rx)
+// {
+//     int cx = 0;
+//     int visual = 0;
+
+//     while (cx < row->size) {
+
+//         /* abbiamo raggiunto la colonna visuale richiesta */
+//         if (visual >= rx)
+//             break;
+
+//         /* -------------------------
+//            possibile tag
+//            ------------------------- */
+
+//         if (row->chars[cx] == '\\' &&
+//             cx + 1 < row->size) {
+
+//             /* \S */
+
+//             if (row->chars[cx + 1] == 'S') {
+//                 cx += 2;
+//                 continue;
+//             }
+
+//             /* \F...\  \B...\ */
+
+//             if ((row->chars[cx + 1] == 'F' ||
+//                  row->chars[cx + 1] == 'B') &&
+//                 editorValidColorTag(row, cx)) {
+
+//                 cx += 13;
+//                 continue;
+//             }
+//         }
+
+//         /* -------------------------
+//            carattere visuale normale
+//            ------------------------- */
+
+//         cx++;
+//         visual++;
+//     }
+
+//     return cx;
+// }
+
+// int editorRowCxToRx(erow *row, int cx) {
+
+//     int rx = 0;
+//     int i = 0;
+
+//     int w = 0;
+
+//     while (i < cx && i < row->size) {
+
+//       // w++;
+//       // if(w > 200) abort();
+//         /* -------------------------
+//            carattere normale
+//            ------------------------- */
+
+//         if (row->chars[i] != '\\') {
+//             rx++;
+//             i++;
+//             continue;
+//         }
+
+//         /* '\' finale isolato */
+
+//         if (i + 1 >= row->size) {
+//             rx++;
+//             i++;
+//             continue;
+//         }
+
+//         /* -------------------------
+//            \S
+//            ------------------------- */
+
+//         if (row->chars[i + 1] == 'S') {
+
+//             /*
+//              * Se cx è dentro "\S"
+//              * posiziona il cursore
+//              * dopo il tag.
+//              */
+
+//             if (cx >= i && cx < i + 2)
+//                 return rx;
+
+//             i += 2;
+//             continue;
+//         }
+
+//         /* -------------------------
+//            \F255;255;255
+//            \B255;255;255
+//            ------------------------- */
+
+//         if ((row->chars[i + 1] == 'F' ||
+//              row->chars[i + 1] == 'B')) {
+            
+//             /*
+//              * Se cx è dentro il tag,
+//              * mostra il cursore
+//              * dopo il tag.
+//              */
+
+//             if (cx >= i && cx < i + 13) return rx;
+
+//             int valid = editorValidColorTag(row, i);
+//             if(valid) i +=13;
+//             else{
+//               i++;
+//               rx++;
+//             } 
+            
+//             continue;
+//         }
+
+//         /* -------------------------
+//            qualsiasi altra sequenza
+//            viene trattata come testo
+//            normale
+//            ------------------------- */
+
+//         rx++;
+//         i++;
+//     }
+
+//     return rx;
+// }
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
@@ -440,9 +553,10 @@ void editorUpdateRow(erow *row) {
 
       case 'F':
       case 'B':
-        if (j + 13 >= row->size) { // controllo importantissimo, serve per non far crush nel momento in cui si scrive una sequenza alla fine di una riga o comunque dove successivamente all'inizio della sequenz non sono presenti almeno 13 caratteri 
+        if (j + 13 >= row->size || !editorValidColorTag(row,j)) { // controllo importantissimo, serve per non far crush nel momento in cui si scrive una sequenza alla fine di una riga o comunque dove successivamente all'inizio della sequenz non sono presenti almeno 13 caratteri 
           row->render[rindx++] = row->chars[j++];
         } else j += 13;
+        
         break;
 
       default:
@@ -454,6 +568,7 @@ void editorUpdateRow(erow *row) {
 
         break;
     }
+
   }
 
   row->render[rindx] = '\0';
@@ -1412,19 +1527,7 @@ void editorDrawRenderRows(struct abuf *ab) {
 
       if (i + 13 <= row->size) {
 
-        char buf[12];
-
-        memcpy(buf, &row->chars[i + 2], 11);
-        buf[11] = '\0';
-
-        int r = -1;
-        int g = -1;
-        int b = -1;
-
-        int valid = sscanf(buf, "%d;%d;%d", &r, &g, &b) == 3 &&
-          r >= 0 && r <= 255 &&
-          g >= 0 && g <= 255 &&
-          b >= 0 && b <= 255;
+        int valid = editorValidColorTag(row, i);
 
         if (valid) {
 
