@@ -9,6 +9,10 @@ asino, mucca, elefante
 1,,,,,,,,,,,,,,0000000000000000''''''mmmmmmmmmmmmmmmmm,,,,,,\S
 qwertyuiopasdfghjklzxcvbnm;.-
 0000
+\PTITOLO
+\Ptesto1, okok, prova
+\Ptesto2 ccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+\Ptesto3
 asdasdasddddddddddddddddd\F100;200;123ddddddd
 wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
 vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
@@ -27,7 +31,6 @@ clear
 9
 10
 1s1
-\P
 12
 13
 14
@@ -35,6 +38,5 @@ clear
 16
 17
 18
-\P
 ZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZZz
 KKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKkkkkK

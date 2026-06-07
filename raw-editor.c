@@ -48,6 +48,7 @@ typedef struct erow {
   char *chars;
   int rsize;
   char *render; // buffer usato per effettuare il render cioè in pratica quello effettivamente stampato
+  int folding;
 } erow;
 
 struct editorConfig {
@@ -68,6 +69,7 @@ struct editorConfig {
   int mod;
   int render;
   int mcolors;
+  int rowskip;
   struct termios orig_termios;
 };
 struct editorConfig E;
@@ -76,6 +78,8 @@ struct editorConfig E;
 void editorSetStatusMessage(const char *fmt, ...);
 void editorInsertChar(int c);
 void editorMoveCursor(int key);
+void editorRefreshRenderScreen();
+void editorUpdateFolding();
 
 /*** terminal ***/
 
@@ -585,6 +589,7 @@ void editorInsertRow(int at, char *s, size_t len) {
   E.row[at].chars[len] = '\0';
   E.row[at].rsize = 0;
   E.row[at].render = NULL;
+  E.row[at].folding = 0;
   editorUpdateRow(&E.row[at]);
   E.numrows++;  // incremento finale essendo stata aggiunta la riga appena processata 
   E.dirty++;
@@ -940,6 +945,11 @@ void editorProcessKeypress() {
     
     case CTRL_KEY('l'):
     case '\x1b':
+      break;
+    
+    case CTRL_KEY('t'):
+        editorUpdateFolding();
+        editorRefreshRenderScreen();
       break;
 
     case ALT_f:
@@ -1422,9 +1432,27 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 
+void editorUpdateFolding(){
+  // presumibilmente qui modificherai anche la variabile che definisce offset positivo da applicare allo scroll verticale 
+  // for(int i = 0; i < E.numrows; i++){
+  //   E.row[i].folding = !E.row[i].folding;
+  // }
+  if(E.cy == 0 || E.cy == E.numrows) return;
+  if(E.row[E.cy].size >= 3 && E.row[E.cy].chars[0] == '\\' && E.row[E.cy].chars[1] == 'P'){
+    int y = E.cy + 1;
+    while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
+      E.row[y].folding = !E.row[y].folding;
+      if(E.row[y].folding){
+        E.rowskip++;
+      }else E.rowskip--;
 
+      y++;
+    }
+  }
+} 
 
 void editorRenderScroll(){
+
   if (E.ry < E.rrowoff)
     E.rrowoff = E.ry;
 
@@ -1436,11 +1464,26 @@ void editorRenderScroll(){
 
   if (E.rx >= E.rcoloff + E.screencols)
     E.rcoloff = E.rx - E.screencols + 1;
+  
+  // if (E.ry < E.rrowoff)
+  //   // trueoffset = E.ry;
+  //   E.rrowoff = E.ry;
+
+  // if (E.ry >= E.rrowoff + E.screenrows + E.rowskip)
+  //   // trueoffset = E.ry - E.screenrows + 1;
+  //   E.rrowoff = E.ry - E.screenrows + 1 - E.rowskip;
+
+  // if (E.rx < E.rcoloff)
+  //   E.rcoloff = E.rx;
+
+  // if (E.rx >= E.rcoloff + E.screencols)
+  //   E.rcoloff = E.rx - E.screencols + 1;
 }
 
 void editorDrawRenderRows(struct abuf *ab) {
+  abAppend(ab, "\x1b[2J", 4); // aggiunta derivante dal folding
 
-  for (int y = 0; y < E.screenrows; y++) {
+  for (int y = 0; y < E.screenrows + E.rowskip; y++) {
 
     int filerow = y + E.rrowoff;
 
@@ -1452,6 +1495,10 @@ void editorDrawRenderRows(struct abuf *ab) {
     }
 
     erow *row = &E.row[filerow];
+
+    // da l'impressione che non funzioni ma in realtà la riga viene saltata completamente e nell'autput non voglio che venga scritto nulla, quello che era già srcritto nel terminale viene sovrascritto dalla prossima riga visibile 
+    if(row->folding == 1) continue;
+    
 
     // colonne visuali da saltare
     int skip = E.rcoloff;
@@ -1624,6 +1671,7 @@ void initEditor() {
   E.mod = 1;
   E.render = 0;
   E.mcolors = 0;
+  E.rowskip = 0;
   if (getWindowSize(&E.screenrows, &E.screencols) == -1) die("getWindowSize");
 
   E.screenrows -= 2; // tolgo una screenrow perche la riservo per la status bar e una per scrivere il messaggio
