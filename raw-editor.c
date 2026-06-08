@@ -294,219 +294,122 @@ int editorValidColorTag(erow *row, int pos)
             b <= 255);
 }
 
-int editorRowCxToRx(erow *row, int cx)
+int editorRowCxToRx(erow *row, int cx) {
+  int rx = 0;
+  int i = 0;
+
+  while (i < cx && i < row->size) {
+
+      if (row->chars[i] == '\\' &&
+          i + 1 < row->size) {
+
+          /* \S */
+
+          if (row->chars[i + 1] == 'S') {
+
+              if (i + 2 <= cx)
+                  i += 2;
+              else
+                  break;
+
+              continue;
+          }
+
+          /* \F... / \B... */
+
+          if ((row->chars[i + 1] == 'F' ||
+                row->chars[i + 1] == 'B') &&
+              editorValidColorTag(row, i)) {
+
+              if (i + 13 <= cx)
+                  i += 13;
+              else
+                  break;
+
+              continue;
+          }
+      }
+
+      i++;
+      rx++;
+  }
+
+  return rx;
+}
+
+int editorRowRxToCx(erow *row, int rx) {
+
+  int cx = 0;
+  int visual = 0;
+
+  while (cx < row->size) {
+
+      if (visual >= rx)
+          break;
+
+      if (row->chars[cx] == '\\' &&
+          cx + 1 < row->size) {
+
+          /* \S */
+
+          if (row->chars[cx + 1] == 'S') {
+              cx += 2;
+              continue;
+          }
+
+          /* \F... / \B... */
+
+          if ((row->chars[cx + 1] == 'F' ||
+                row->chars[cx + 1] == 'B') &&
+              editorValidColorTag(row, cx)) {
+
+              cx += 13;
+              continue;
+          }
+      }
+
+      cx++;
+      visual++;
+  }
+
+  return cx;
+}
+
+void editorVerticalReposition(char v)
 {
-    int rx = 0;
-    int i = 0;
+    if (v == 'd') {
 
-    while (i < cx && i < row->size) {
-
-        if (row->chars[i] == '\\' &&
-            i + 1 < row->size) {
-
-            /* \S */
-
-            if (row->chars[i + 1] == 'S') {
-
-                if (i + 2 <= cx)
-                    i += 2;
-                else
-                    break;
-
-                continue;
-            }
-
-            /* \F... / \B... */
-
-            if ((row->chars[i + 1] == 'F' ||
-                 row->chars[i + 1] == 'B') &&
-                editorValidColorTag(row, i)) {
-
-                if (i + 13 <= cx)
-                    i += 13;
-                else
-                    break;
-
-                continue;
-            }
+        while (E.cy < E.numrows &&
+               E.row[E.cy].folding)
+        {
+            E.cy++;
         }
 
-        i++;
-        rx++;
-    }
+    } else {
 
-    return rx;
-}
-int editorRowRxToCx(erow *row, int rx)
-{
-    int cx = 0;
-    int visual = 0;
-
-    while (cx < row->size) {
-
-        if (visual >= rx)
-            break;
-
-        if (row->chars[cx] == '\\' &&
-            cx + 1 < row->size) {
-
-            /* \S */
-
-            if (row->chars[cx + 1] == 'S') {
-                cx += 2;
-                continue;
-            }
-
-            /* \F... / \B... */
-
-            if ((row->chars[cx + 1] == 'F' ||
-                 row->chars[cx + 1] == 'B') &&
-                editorValidColorTag(row, cx)) {
-
-                cx += 13;
-                continue;
-            }
+        while (E.cy > 0 &&
+               E.row[E.cy].folding)
+        {
+            E.cy--;
         }
-
-        cx++;
-        visual++;
     }
 
-    return cx;
+    E.ry = E.cy;
+
+    if (E.cy < E.numrows) {
+
+        int rowlen = E.row[E.cy].size;
+
+        if (E.cx > rowlen)
+            E.cx = rowlen;
+
+        E.rx = editorRowCxToRx(&E.row[E.cy], E.cx);
+
+    } else {
+
+        E.rx = 0;
+    }
 }
-// int editorRowRxToCx(erow *row, int rx)
-// {
-//     int cx = 0;
-//     int visual = 0;
-
-//     while (cx < row->size) {
-
-//         /* abbiamo raggiunto la colonna visuale richiesta */
-//         if (visual >= rx)
-//             break;
-
-//         /* -------------------------
-//            possibile tag
-//            ------------------------- */
-
-//         if (row->chars[cx] == '\\' &&
-//             cx + 1 < row->size) {
-
-//             /* \S */
-
-//             if (row->chars[cx + 1] == 'S') {
-//                 cx += 2;
-//                 continue;
-//             }
-
-//             /* \F...\  \B...\ */
-
-//             if ((row->chars[cx + 1] == 'F' ||
-//                  row->chars[cx + 1] == 'B') &&
-//                 editorValidColorTag(row, cx)) {
-
-//                 cx += 13;
-//                 continue;
-//             }
-//         }
-
-//         /* -------------------------
-//            carattere visuale normale
-//            ------------------------- */
-
-//         cx++;
-//         visual++;
-//     }
-
-//     return cx;
-// }
-
-// int editorRowCxToRx(erow *row, int cx) {
-
-//     int rx = 0;
-//     int i = 0;
-
-//     int w = 0;
-
-//     while (i < cx && i < row->size) {
-
-//       // w++;
-//       // if(w > 200) abort();
-//         /* -------------------------
-//            carattere normale
-//            ------------------------- */
-
-//         if (row->chars[i] != '\\') {
-//             rx++;
-//             i++;
-//             continue;
-//         }
-
-//         /* '\' finale isolato */
-
-//         if (i + 1 >= row->size) {
-//             rx++;
-//             i++;
-//             continue;
-//         }
-
-//         /* -------------------------
-//            \S
-//            ------------------------- */
-
-//         if (row->chars[i + 1] == 'S') {
-
-//             /*
-//              * Se cx è dentro "\S"
-//              * posiziona il cursore
-//              * dopo il tag.
-//              */
-
-//             if (cx >= i && cx < i + 2)
-//                 return rx;
-
-//             i += 2;
-//             continue;
-//         }
-
-//         /* -------------------------
-//            \F255;255;255
-//            \B255;255;255
-//            ------------------------- */
-
-//         if ((row->chars[i + 1] == 'F' ||
-//              row->chars[i + 1] == 'B')) {
-            
-//             /*
-//              * Se cx è dentro il tag,
-//              * mostra il cursore
-//              * dopo il tag.
-//              */
-
-//             if (cx >= i && cx < i + 13) return rx;
-
-//             int valid = editorValidColorTag(row, i);
-//             if(valid) i +=13;
-//             else{
-//               i++;
-//               rx++;
-//             } 
-            
-//             continue;
-//         }
-
-//         /* -------------------------
-//            qualsiasi altra sequenza
-//            viene trattata come testo
-//            normale
-//            ------------------------- */
-
-//         rx++;
-//         i++;
-//     }
-
-//     return rx;
-// }
 
 // questa funzione è quella che definisce come renderizzare in output deterinate parti del testo
 // gestione del carattere tab (\t), questo carattere è problematico perche se non trattato viene gestito dal terminale che lo renderizza solitamente usando una regola interna ad esso cioè segue i tab stop che sono dati solitamente come multipli interi di 4 (ma non sempre) quindi il tab sposta il cursore sempre su queste colonne, tuttavia questo render automatico è problematico per l'editor perchè il carattere tab (1 carattere) viene espanso di un numero arbritrario, non noto a priori (esempio tab stop 8: ca\tne, nel trminale il testo è renderizzato su 10 colonne di cui 6 spazzi (ha senso, il tab sulla terza clonna viene espanso in 5 spazzi per raggiungere la colonna 8 dove viene scritto n e poi e) MA l'editor ne vede solo 6 in quanto non ha espanso il tab in spazzi e lo ha contato con carattere normale).   
@@ -792,11 +695,13 @@ void editorMoveCursor(int key) {
         if (E.ry != 0) { // evita che il cursore sia posizionato in coordinata y negativa
           E.ry--;
         }
+        editorVerticalReposition('u');
         break;
       case ARROW_DOWN:
         if (E.ry < E.numrows) { // evita che il cursore assuma valori maggiori rispetto a E.numrows ovvero il numero complessivo di righe lette nel file dall'aeditor 
           E.ry++;
         }
+        editorVerticalReposition('d');
         break;
     }
     // ----
@@ -807,8 +712,9 @@ void editorMoveCursor(int key) {
       E.rx = rowlen;
     }
 
-    E.cy = E.ry;
+    // E.cy = E.ry;
     E.cx = row ? editorRowRxToCx(row, E.rx) : 0;
+
 
   } else {
     // in pratica row contiene l'indirizzo della riga in cui si trova il cursore nel momento in cui viene premuta una delle freccette, E.cy potrebbe essere maggiore di E.numrows perchè è previsto lo scroll verticale oltre l'ultima riga del file letto dall'editor, in tal caso è restituito un puntatore NULL in quanto effettivamente non ce nessun elemento erow da puntare
@@ -854,6 +760,7 @@ void editorMoveCursor(int key) {
 
 
   }
+
 
   
 }
@@ -1432,46 +1339,49 @@ void editorSetStatusMessage(const char *fmt, ...) {
 }
 
 
-void editorUpdateFolding(){
-  // presumibilmente qui modificherai anche la variabile che definisce offset positivo da applicare allo scroll verticale 
-  // for(int i = 0; i < E.numrows; i++){
-  //   E.row[i].folding = !E.row[i].folding;
-  // }
-  // if(E.cy == 0 || E.cy == E.numrows) return;
-  // if(E.row[E.cy].size >= 3 && E.row[E.cy].chars[0] == '\\' && E.row[E.cy].chars[1] == 'P'){
-  //   int y = E.cy + 1;
-  //   while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
-  //     E.row[y].folding = !E.row[y].folding;
-  //     if(E.row[y].folding){
-  //       E.rowskip++;
-  //     }else E.rowskip--;
+void editorUpdateFolding()
+{
+    if (E.ry >= E.numrows)
+        return;
 
-  //     y++;
-  //   }
-  // }
-  if(E.row[E.ry].chars[0] != '\\' && E.row[E.ry].chars[1] != 'P') return;
- 
-  int upy = E.cy;
-  while (upy > 0 && E.row[upy].size >= 3 && E.row[upy].chars[0] == '\\' && E.row[upy].chars[1] == 'P') {
-    upy--;
-  }
-  int jump = E.cy - upy - 1 - 1; // -1 perche altrimenti upy punterebbe alla prima riga senza \P e ancora -1 perche altrimenti punterei alla prima riga con \P, che non voglio processare per rendere nascosta, questa deve essere sempre visibile
+    if (E.row[E.ry].size < 2)
+        return;
 
-  E.cy = E.cy - jump;
-  int y = E.cy;
-  while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
-    E.row[y].folding = !E.row[y].folding;
-    if(E.row[y].folding){
-      E.rowskip++;
-    }else E.rowskip--;
+    if (E.row[E.ry].chars[0] != '\\' ||
+        E.row[E.ry].chars[1] != 'P')
+        return;
 
-    y++;
-  }
-  
+    /* trova la prima riga del paragrafo */
 
+    int first = E.ry;
 
-} 
+    while (first > 0 &&
+           E.row[first - 1].size >= 2 &&
+           E.row[first - 1].chars[0] == '\\' &&
+           E.row[first - 1].chars[1] == 'P')
+    {
+        first--;
+    }
 
+    /* folda tutte le righe successive */
+
+    int y = first + 1;
+
+    while (y < E.numrows &&
+           E.row[y].size >= 2 &&
+           E.row[y].chars[0] == '\\' &&
+           E.row[y].chars[1] == 'P')
+    {
+        E.row[y].folding = !E.row[y].folding;
+
+        if (E.row[y].folding)
+            E.rowskip++;
+        else
+            E.rowskip--;
+
+        y++;
+    }
+}
 void editorRenderScroll(){
 
   if (E.ry < E.rrowoff)
@@ -1639,6 +1549,19 @@ void editorDrawRenderRows(struct abuf *ab) {
   }
 }
 
+int editorScreenY(void)
+{
+    int y = 0;
+
+    for (int i = E.rrowoff; i < E.ry; i++) {
+        if (!E.row[i].folding)
+            y++;
+    }
+
+    return y;
+}
+
+
 void editorRefreshRenderScreen(){
   editorRenderScroll();
 
@@ -1654,7 +1577,14 @@ void editorRefreshRenderScreen(){
   // ----
   // muove il cursore, cioè lo posiziona in relazione agli input dati
   char buf[32];
-  snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry - E.rrowoff) + 1, (E.rx - E.rcoloff) + 1); 
+  // snprintf(buf, sizeof(buf), "\x1b[%d;%dH", (E.ry - E.rrowoff) + 1, (E.rx - E.rcoloff) + 1); 
+  snprintf(
+    buf,
+    sizeof(buf),
+    "\x1b[%d;%dH",
+    editorScreenY() + 1,
+    (E.rx - E.rcoloff) + 1
+  );
   
   abAppend(&ab, buf, strlen(buf));
   // ----
