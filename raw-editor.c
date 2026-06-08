@@ -1437,18 +1437,39 @@ void editorUpdateFolding(){
   // for(int i = 0; i < E.numrows; i++){
   //   E.row[i].folding = !E.row[i].folding;
   // }
-  if(E.cy == 0 || E.cy == E.numrows) return;
-  if(E.row[E.cy].size >= 3 && E.row[E.cy].chars[0] == '\\' && E.row[E.cy].chars[1] == 'P'){
-    int y = E.cy + 1;
-    while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
-      E.row[y].folding = !E.row[y].folding;
-      if(E.row[y].folding){
-        E.rowskip++;
-      }else E.rowskip--;
+  // if(E.cy == 0 || E.cy == E.numrows) return;
+  // if(E.row[E.cy].size >= 3 && E.row[E.cy].chars[0] == '\\' && E.row[E.cy].chars[1] == 'P'){
+  //   int y = E.cy + 1;
+  //   while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
+  //     E.row[y].folding = !E.row[y].folding;
+  //     if(E.row[y].folding){
+  //       E.rowskip++;
+  //     }else E.rowskip--;
 
-      y++;
-    }
+  //     y++;
+  //   }
+  // }
+  if(E.row[E.ry].chars[0] != '\\' && E.row[E.ry].chars[1] != 'P') return;
+ 
+  int upy = E.cy;
+  while (upy > 0 && E.row[upy].size >= 3 && E.row[upy].chars[0] == '\\' && E.row[upy].chars[1] == 'P') {
+    upy--;
   }
+  int jump = E.cy - upy - 1 - 1; // -1 perche altrimenti upy punterebbe alla prima riga senza \P e ancora -1 perche altrimenti punterei alla prima riga con \P, che non voglio processare per rendere nascosta, questa deve essere sempre visibile
+
+  E.cy = E.cy - jump;
+  int y = E.cy;
+  while(E.row[y].size >= 3 && E.row[y].chars[0] == '\\' && E.row[y].chars[1] == 'P'){
+    E.row[y].folding = !E.row[y].folding;
+    if(E.row[y].folding){
+      E.rowskip++;
+    }else E.rowskip--;
+
+    y++;
+  }
+  
+
+
 } 
 
 void editorRenderScroll(){
